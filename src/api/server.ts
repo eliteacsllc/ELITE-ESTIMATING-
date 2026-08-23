@@ -13,7 +13,7 @@ import { NoopAuditSink, PostgresAuditSink } from '../audit/audit.js';
 import { MemoryLifecycleSink, PostgresLifecycleOutbox, type LifecycleSink } from '../integrations/outbox.js';
 import { verifyHs256Token } from '../security/token.js';
 import { OidcPrincipalVerifier, oidcConfigFromEnv } from '../security/oidc.js';
-import { InMemoryTokenBucketRateLimiter, principalRateLimitKey, rateLimitPolicyFromEnv } from '../security/rate-limit.js';
+import { InMemoryTokenBucketRateLimiter, PostgresTokenBucketRateLimiter, principalRateLimitKey, rateLimitPolicyFromEnv, type RateLimiter } from '../security/rate-limit.js';
 import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
 import type { AddSupplementChangeInput } from '../application/supplement-service.js';
@@ -43,7 +43,11 @@ const metricsToken = process.env.ELITE_METRICS_TOKEN?.trim() || null;
 if (metricsToken && metricsToken.length < 32) throw new Error('metrics_token_too_short');
 const outboxHealthPolicy = outboxHealthPolicyFromEnv();
 const rateLimitPolicy = rateLimitPolicyFromEnv();
-const rateLimiter = rateLimitPolicy ? new InMemoryTokenBucketRateLimiter(rateLimitPolicy) : null;
+const rateLimiter: RateLimiter | null = rateLimitPolicy
+  ? databaseUrl
+    ? new PostgresTokenBucketRateLimiter(databaseUrl, rateLimitPolicy)
+    : new InMemoryTokenBucketRateLimiter(rateLimitPolicy)
+  : null;
 const oidcConfig = oidcConfigFromEnv();
 const oidcVerifier = oidcConfig ? new OidcPrincipalVerifier(oidcConfig) : null;
 const r2Config = r2BlobStoreConfigFromEnv();
@@ -164,6 +168,8 @@ async function readiness(): Promise<{
   idempotencyStorage: boolean;
   idempotencyRequired: boolean;
   rateLimitConfigured: boolean;
+  rateLimitDurable: boolean;
+  rateLimitHealthy: boolean;
   rateLimitRequired: boolean;
   blobStorageConfigured: boolean;
   blobStorageRequired: boolean;
@@ -188,7 +194,9 @@ async function readiness(): Promise<{
   const blobStorageConfigured = Boolean(blobStore);
   const blobReady = !requireBlobStorage || blobStorageConfigured;
   const rateLimitConfigured = Boolean(rateLimiter);
-  const rateLimitReady = !requireRateLimit || rateLimitConfigured;
+  const rateLimitDurable = rateLimiter instanceof PostgresTokenBucketRateLimiter;
+  const rateLimitHealthy = rateLimiter?.health ? await rateLimiter.health().catch(() => false) : rateLimitConfigured;
+  const rateLimitReady = !requireRateLimit || (rateLimitConfigured && rateLimitHealthy && (rateLimitDurable || allowEphemeral));
   const outboxHealth = await lifecycleHealthSource.healthSnapshot().catch(() => null);
   const outboxEvaluation = outboxHealth
     ? evaluateOutboxHealth(outboxHealth, outboxHealthPolicy)
@@ -206,6 +214,8 @@ async function readiness(): Promise<{
     idempotencyStorage,
     idempotencyRequired: requireIdempotency,
     rateLimitConfigured,
+    rateLimitDurable,
+    rateLimitHealthy,
     rateLimitRequired: requireRateLimit,
     blobStorageConfigured,
     blobStorageRequired: requireBlobStorage,
@@ -255,7 +265,7 @@ const server = createServer(async (req, res) => {
 
     const actor = await principal(req);
     if (rateLimiter) {
-      const result = rateLimiter.consume(principalRateLimitKey(actor));
+      const result = await rateLimiter.consume(principalRateLimitKey(actor));
       if (!result.allowed) {
         return send(res, 429, { error: 'rate_limited', retryAfterSeconds: result.retryAfterSeconds }, {
           'retry-after': String(result.retryAfterSeconds),
@@ -395,6 +405,7 @@ const shutdown = async () => {
   if (postgresIdempotency) await postgresIdempotency.close();
   if (postgresOutbox) await postgresOutbox.close();
   if (auditSink instanceof PostgresAuditSink) await auditSink.close();
+  if (rateLimiter?.close) await rateLimiter.close();
 };
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
