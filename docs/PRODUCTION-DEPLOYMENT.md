@@ -12,7 +12,7 @@ Configure these values as GitHub Environment secrets, never repository files:
 
 - `CLOUDFLARE_API_TOKEN` — scoped Cloudflare token capable of deploying the target Worker/Containers application.
 - `CLOUDFLARE_ACCOUNT_ID` — target Cloudflare account ID.
-- `DATABASE_URL` — production PostgreSQL connection URL.
+- `DATABASE_URL` — production PostgreSQL connection URL. Non-local production databases must require TLS with `sslmode=require`, `sslmode=verify-ca`, or preferably `sslmode=verify-full` when the provider supports hostname/certificate verification. A remote PostgreSQL URL without one of these modes cannot pass `launch:check`.
 - `ELITE_AUTH_SECRET` — production service-token secret, minimum 32 characters. Enterprise OIDC can replace this only after the deployment adapter and launch gate are updated for the OIDC-only secret contract.
 - `ELITE_METRICS_TOKEN` — protected metrics bearer token, minimum 32 characters.
 - `R2_ACCOUNT_ID`
@@ -53,7 +53,7 @@ The workflow performs, in order:
 
 1. deployment-input and required-secret validation;
 2. application install, strict verification, and production dependency audit;
-3. real launch-manifest certification;
+3. real launch-manifest certification, including secure PostgreSQL transport;
 4. Cloudflare adapter install and typecheck;
 5. local build of the exact production Docker image;
 6. temporary secret-bundle creation with mode `0600`;
@@ -93,7 +93,7 @@ Cloudflare may make the Worker URL reachable before the first container applicat
 The repository cannot manufacture or self-approve:
 
 - Cloudflare account authorization and API token scope;
-- production PostgreSQL provisioning and credentials;
+- production PostgreSQL provisioning, credentials, and provider-supported TLS settings;
 - R2 bucket/credential provisioning;
 - production DNS/custom-domain ownership;
 - Claims Management production webhook ownership;
