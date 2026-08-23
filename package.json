@@ -1,6 +1,6 @@
 {
   "name": "elite-estimating",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,7 +18,7 @@
     "dispatch:outbox": "node dist/integrations/dispatch-worker.js",
     "verify": "npm run typecheck && npm test"
   },
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22" },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1115.0",
     "@aws-sdk/s3-request-presigner": "3.1115.0",
