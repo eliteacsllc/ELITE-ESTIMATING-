@@ -20,9 +20,13 @@ export class InMemoryEstimateRepository implements EstimateRepository {
     return value ? structuredClone(value) : null;
   }
 
-  async save(estimate: Estimate): Promise<Estimate> {
+  async save(estimate: Estimate, expectedUpdatedAt?: string): Promise<Estimate> {
     const key = this.key(estimate.tenantId, estimate.id);
-    if (!this.rows.has(key)) throw new Error('estimate_not_found');
+    const current = this.rows.get(key);
+    if (!current) throw new Error('estimate_not_found');
+    if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) {
+      throw new Error('estimate_concurrent_modification');
+    }
     this.rows.set(key, structuredClone(estimate));
     return structuredClone(estimate);
   }
