@@ -62,6 +62,16 @@ Elite Estimating is not considered production-ready merely because code builds. 
 - Free/low-cost entry path for independents where economics allow.
 - Usage metering and billing reconciliation tested.
 
+## Executable certification
+
+1. Copy `launch/launch-manifest.example.json` to a market-specific evidence file.
+2. Replace placeholders only with real evidence references and executed/approved records.
+3. Configure production environment variables without committing credentials.
+4. Build the project, then run `npm run launch:check -- <manifest.json>`.
+5. A zero exit code means the machine-enforced gates represented by the manifest and runtime configuration are GREEN. It does not waive unmodeled legal, contractual, operational, or regulatory obligations.
+
+The shipped example is intentionally RED: approvals are false and recovery targets are zero. CI tests that it cannot accidentally certify production.
+
 ## Launch decision
 
 A market is GREEN only when all critical gates are evidenced. Missing licensed data, security controls, or safety procedure coverage is a launch blocker—not a warning.
