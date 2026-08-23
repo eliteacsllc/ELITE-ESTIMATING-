@@ -8,6 +8,7 @@ import { InMemorySupplementRepository, PostgresSupplementRepository, type Supple
 import { NoopAuditSink, PostgresAuditSink } from '../audit/audit.js';
 import { MemoryLifecycleSink, PostgresLifecycleOutbox, type LifecycleSink } from '../integrations/outbox.js';
 import { verifyHs256Token } from '../security/token.js';
+import { OidcPrincipalVerifier, oidcConfigFromEnv } from '../security/oidc.js';
 import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
 import type { AddSupplementChangeInput } from '../application/supplement-service.js';
@@ -18,6 +19,8 @@ import { supplementManagerCss, supplementManagerJs } from '../web/supplement-man
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
+const oidcConfig = oidcConfigFromEnv();
+const oidcVerifier = oidcConfig ? new OidcPrincipalVerifier(oidcConfig) : null;
 const postgresRepository = databaseUrl ? new PostgresEstimateRepository(databaseUrl) : null;
 const postgresSupplements = databaseUrl ? new PostgresSupplementRepository(databaseUrl) : null;
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
@@ -74,11 +77,20 @@ async function json(req: IncomingMessage): Promise<Record<string, unknown>> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
 }
 
-function principal(req: IncomingMessage): Principal {
+async function principal(req: IncomingMessage): Promise<Principal> {
   const authorization = req.headers.authorization;
+  if (!authorization?.startsWith('Bearer ')) throw new Error('unauthorized');
+  const token = authorization.slice(7);
+  if (oidcVerifier) {
+    try {
+      return await oidcVerifier.verify(token);
+    } catch {
+      throw new Error('unauthorized');
+    }
+  }
   const secret = process.env.ELITE_AUTH_SECRET;
-  if (!authorization?.startsWith('Bearer ') || !secret || secret.length < 32) throw new Error('unauthorized');
-  const claims = verifyHs256Token(authorization.slice(7), secret);
+  if (!secret || secret.length < 32) throw new Error('unauthorized');
+  const claims = verifyHs256Token(token, secret);
   return { userId: claims.userId, tenantId: claims.tenantId, roles: claims.roles };
 }
 
@@ -90,12 +102,14 @@ function pathParts(url = '/'): string[] {
   return requestUrl(url).pathname.split('/').filter(Boolean);
 }
 
-async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean }> {
-  const authConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
+async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean }> {
+  const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
+  const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
+  const authConfigured = authMode !== 'unconfigured';
   const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresOutbox);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
   const lifecycleOutbox = Boolean(postgresOutbox) || allowEphemeral;
-  return { ready: authConfigured && databaseHealthy && lifecycleOutbox && (durableStorage || allowEphemeral), authConfigured, durableStorage, databaseHealthy, lifecycleOutbox };
+  return { ready: authConfigured && databaseHealthy && lifecycleOutbox && (durableStorage || allowEphemeral), authConfigured, authMode, durableStorage, databaseHealthy, lifecycleOutbox };
 }
 
 const server = createServer(async (req, res) => {
@@ -118,7 +132,7 @@ const server = createServer(async (req, res) => {
       return send(res, state.ready ? 200 : 503, { status: state.ready ? 'ready' : 'not_ready', ...state });
     }
 
-    const actor = principal(req);
+    const actor = await principal(req);
     const url = requestUrl(req.url);
     const parts = pathParts(req.url);
 
