@@ -17,6 +17,7 @@ export class HttpMetrics {
   private inFlight = 0;
   private readonly requestTotals = new Map<string, number>();
   private readonly latencyCounts = new Map<string, number[]>();
+  private readonly latencyTotals = new Map<string, number>();
   private readonly latencySums = new Map<string, number>();
 
   begin(): void { this.inFlight += 1; }
@@ -31,6 +32,7 @@ export class HttpMetrics {
     const counts = this.latencyCounts.get(latencyKey) ?? latencyBucketsMs.map(() => 0);
     latencyBucketsMs.forEach((bucket, index) => { if (durationMs <= bucket) counts[index] = (counts[index] ?? 0) + 1; });
     this.latencyCounts.set(latencyKey, counts);
+    this.latencyTotals.set(latencyKey, (this.latencyTotals.get(latencyKey) ?? 0) + 1);
     this.latencySums.set(latencyKey, (this.latencySums.get(latencyKey) ?? 0) + durationMs / 1000);
   }
 
@@ -52,7 +54,7 @@ export class HttpMetrics {
       latencyBucketsMs.forEach((bucket, index) => {
         lines.push(`elite_http_request_duration_seconds_bucket{method="${escapeLabel(method)}",route="${escapeLabel(route)}",le="${bucket / 1000}"} ${counts[index] ?? 0}`);
       });
-      const count = counts[latencyBucketsMs.length - 1] ?? 0;
+      const count = this.latencyTotals.get(key) ?? 0;
       const sum = this.latencySums.get(key) ?? 0;
       lines.push(`elite_http_request_duration_seconds_bucket{method="${escapeLabel(method)}",route="${escapeLabel(route)}",le="+Inf"} ${count}`);
       lines.push(`elite_http_request_duration_seconds_sum{method="${escapeLabel(method)}",route="${escapeLabel(route)}"} ${sum}`);
