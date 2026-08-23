@@ -82,7 +82,7 @@ jobs:
           test "$PRIMARY_SUPPLEMENTS" = "$RESTORED_SUPPLEMENTS"
           test "$RESTORED_ESTIMATES" -gt 0
           test "$RESTORED_SUPPLEMENTS" -gt 0
-      - name: Smoke production server and HTTP mutation idempotency
+      - name: Smoke production server, idempotency, and remote edge flow
         run: |
           node dist/api/server.js > /tmp/elite-estimating.log 2>&1 &
           SERVER_PID=$!
@@ -97,5 +97,6 @@ jobs:
           grep -q '"rateLimitHealthy":true' /tmp/ready.json
           curl --fail --silent http://127.0.0.1:8787/health | grep -q '"status":"ok"'
           npm run smoke:http
+          ELITE_SMOKE_BASE_URL=http://127.0.0.1:8787 npm run smoke:remote
       - name: Build production container
         run: docker build -t elite-estimating:ci .
