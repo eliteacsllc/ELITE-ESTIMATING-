@@ -16,6 +16,9 @@ import { EliteJsonInterchangeAdapter } from '../interchange/elite-json.js';
 import { InMemoryEvidenceRepository, PostgresEvidenceRepository, type EvidenceRepository } from '../evidence/repository.js';
 import { EvidenceService } from '../evidence/service.js';
 import type { RegisterEvidenceInput } from '../evidence/types.js';
+import type { DamageGraph } from '../damage/graph.js';
+import { DamageGraphService } from '../damage/service.js';
+import { InMemoryDamageGraphRepository, PostgresDamageGraphRepository, type DamageGraphRepository } from '../damage/repository.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
 import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
@@ -27,15 +30,18 @@ const oidcVerifier = oidcConfig ? new OidcPrincipalVerifier(oidcConfig) : null;
 const postgresRepository = databaseUrl ? new PostgresEstimateRepository(databaseUrl) : null;
 const postgresSupplements = databaseUrl ? new PostgresSupplementRepository(databaseUrl) : null;
 const postgresEvidence = databaseUrl ? new PostgresEvidenceRepository(databaseUrl) : null;
+const postgresDamageGraphs = databaseUrl ? new PostgresDamageGraphRepository(databaseUrl) : null;
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
 const supplementRepository: SupplementRepository = postgresSupplements ?? new InMemorySupplementRepository();
 const evidenceRepository: EvidenceRepository = postgresEvidence ?? new InMemoryEvidenceRepository();
+const damageGraphRepository: DamageGraphRepository = postgresDamageGraphs ?? new InMemoryDamageGraphRepository();
 const lifecycleSink: LifecycleSink = postgresOutbox ?? new MemoryLifecycleSink();
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
 const supplementService = new SupplementService(repository, supplementRepository, lifecycleSink);
 const evidenceService = new EvidenceService(repository, evidenceRepository);
+const damageGraphService = new DamageGraphService(repository, damageGraphRepository);
 const interchange = new EliteJsonInterchangeAdapter();
 
 function baseHeaders(): Record<string, string> {
@@ -99,15 +105,25 @@ async function principal(req: IncomingMessage): Promise<Principal> {
 function requestUrl(url = '/'): URL { return new URL(url, 'http://localhost'); }
 function pathParts(url = '/'): string[] { return requestUrl(url).pathname.split('/').filter(Boolean); }
 
-async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean; evidenceStorage: boolean }> {
+async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean; evidenceStorage: boolean; damageGraphStorage: boolean }> {
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
-  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresOutbox);
+  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresOutbox);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
   const lifecycleOutbox = Boolean(postgresOutbox) || allowEphemeral;
   const evidenceStorage = Boolean(postgresEvidence) || allowEphemeral;
-  return { ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && (durableStorage || allowEphemeral), authConfigured, authMode, durableStorage, databaseHealthy, lifecycleOutbox, evidenceStorage };
+  const damageGraphStorage = postgresDamageGraphs ? await postgresDamageGraphs.health().catch(() => false) : allowEphemeral;
+  return {
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && (durableStorage || allowEphemeral),
+    authConfigured,
+    authMode,
+    durableStorage,
+    databaseHealthy,
+    lifecycleOutbox,
+    evidenceStorage,
+    damageGraphStorage,
+  };
 }
 
 const server = createServer(async (req, res) => {
@@ -171,6 +187,15 @@ const server = createServer(async (req, res) => {
     if (parts[0] === 'v1' && parts[1] === 'estimates' && parts[2]) {
       const id = parts[2];
       if (req.method === 'GET' && parts.length === 3) return send(res, 200, await service.get(actor, id));
+      if (parts[3] === 'damage-graph' && parts.length === 4) {
+        if (req.method === 'GET') {
+          const revisionValue = url.searchParams.get('revision');
+          const revision = revisionValue === null ? undefined : Number(revisionValue);
+          if (revision !== undefined && (!Number.isInteger(revision) || revision < 1)) throw new Error('invalid_damage_graph_revision');
+          return send(res, 200, await damageGraphService.get(actor, id, revision));
+        }
+        if (req.method === 'PUT') return send(res, 200, await damageGraphService.save(actor, id, await json(req) as DamageGraph));
+      }
       if (req.method === 'GET' && parts[3] === 'export') {
         const estimate = await service.get(actor, id);
         const payload = new TextDecoder().decode(interchange.exportEstimate(estimate));
@@ -198,7 +223,7 @@ const server = createServer(async (req, res) => {
     const message = error instanceof Error ? error.message : 'unknown_error';
     const status = message === 'unauthorized' || message.startsWith('invalid_token') || message === 'token_expired' ? 401
       : message.includes('not_permitted') || message.includes('access_denied') ? 403
-      : message === 'estimate_not_found' || message === 'supplement_not_found' ? 404
+      : message === 'estimate_not_found' || message === 'supplement_not_found' || message === 'damage_graph_not_found' ? 404
       : message === 'request_too_large' ? 413
       : 400;
     return send(res, status, { error: message });
@@ -216,6 +241,7 @@ const shutdown = async () => {
   if (postgresRepository) await postgresRepository.close();
   if (postgresSupplements) await postgresSupplements.close();
   if (postgresEvidence) await postgresEvidence.close();
+  if (postgresDamageGraphs) await postgresDamageGraphs.close();
   if (postgresOutbox) await postgresOutbox.close();
   if (auditSink instanceof PostgresAuditSink) await auditSink.close();
 };
