@@ -32,11 +32,12 @@ jobs:
       PRODUCTION_URL: ${{ inputs.production_url }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
 
       - name: Report production environment secret inventory
         id: inventory
@@ -75,7 +76,7 @@ jobs:
 
       - name: Install launch checker
         if: ${{ steps.inventory.outputs.missing_count == '0' }}
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Validate production configuration and launch evidence
         if: ${{ steps.inventory.outputs.missing_count == '0' }}
