@@ -2,6 +2,7 @@
   "name": "elite-estimating-cloudflare",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=22" },
   "scripts": {
     "check": "tsc --noEmit",
     "deploy": "wrangler deploy --config wrangler.jsonc"
