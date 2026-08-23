@@ -5,4 +5,5 @@ export interface EstimateRepository {
   getById(tenantId: string, id: string): Promise<Estimate | null>;
   save(estimate: Estimate): Promise<Estimate>;
   listByClaim(tenantId: string, claimId: string): Promise<Estimate[]>;
+  listRecent(tenantId: string, limit: number): Promise<Estimate[]>;
 }
