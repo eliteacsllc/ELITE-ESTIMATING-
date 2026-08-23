@@ -1,0 +1,16 @@
+{
+  "name": "elite-estimating-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "deploy": "wrangler deploy --config wrangler.jsonc"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.0.28"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "wrangler": "^4.33.1"
+  }
+}
