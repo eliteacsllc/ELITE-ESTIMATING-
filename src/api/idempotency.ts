@@ -137,8 +137,8 @@ export class PostgresIdempotencyRepository implements IdempotencyRepository {
     if (result.rowCount !== 1) throw new Error('idempotency_receipt_not_found');
   }
   async health(): Promise<boolean> {
-    const result = await this.pool.query('SELECT 1 AS ok');
-    return result.rows[0]?.ok === 1;
+    const result = await this.pool.query("SELECT to_regclass('public.mutation_idempotency_receipts') IS NOT NULL AS ok");
+    return result.rows[0]?.ok === true;
   }
   async close(): Promise<void> { await this.pool.end(); }
 }
