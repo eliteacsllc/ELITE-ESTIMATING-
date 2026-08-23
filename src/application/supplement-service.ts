@@ -50,7 +50,7 @@ export class SupplementService {
       topic,
       aggregateType: 'supplement',
       aggregateId: supplement.id,
-      payload: { supplementId: supplement.id, estimateId: supplement.estimateId, sequence: supplement.sequence, status: supplement.status, ...payload },
+      payload: { supplementId: supplement.id, estimateId: supplement.estimateId, baseRevision: supplement.baseRevision, status: supplement.status, changeCount: supplement.changes.length, ...payload },
       idempotencyKey: `${topic}:${tenantId}:${supplement.id}:${supplement.status}:${supplement.changes.length}`,
     }));
   }
@@ -59,7 +59,7 @@ export class SupplementService {
     authorize(principal, 'supplement:create', principal.tenantId);
     const estimate = await this.getEstimate(principal, estimateId);
     const saved = await this.supplements.create(principal.tenantId, createSupplement(estimate));
-    await this.emit('supplement.created', principal.tenantId, saved, { baseRevision: saved.baseRevision });
+    await this.emit('supplement.created', principal.tenantId, saved);
     return saved;
   }
 
@@ -80,7 +80,7 @@ export class SupplementService {
       reason: input.reason.trim(), requestedBy: principal.userId, requestedAt: new Date().toISOString(),
     };
     const saved = await this.supplements.save(principal.tenantId, { ...supplement, changes: [...supplement.changes, change] });
-    await this.emit('supplement.updated', principal.tenantId, saved, { changeType: change.type, changeCount: saved.changes.length });
+    await this.emit('supplement.updated', principal.tenantId, saved, { changeType: change.type });
     return saved;
   }
 
@@ -89,7 +89,7 @@ export class SupplementService {
     const supplement = await this.getSupplement(principal, supplementId);
     if (supplement.status !== 'draft' || supplement.changes.length === 0) throw new Error('supplement_not_submittable');
     const saved = await this.supplements.save(principal.tenantId, { ...supplement, status: 'submitted' });
-    await this.emit('supplement.submitted', principal.tenantId, saved, { changeCount: saved.changes.length });
+    await this.emit('supplement.submitted', principal.tenantId, saved);
     return saved;
   }
 
