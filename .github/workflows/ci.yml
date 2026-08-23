@@ -15,7 +15,25 @@ concurrency:
 jobs:
   core:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
+    env:
+      DATABASE_URL: postgresql://elite:elite@127.0.0.1:5432/elite_estimating
+      ELITE_AUTH_SECRET: ci-only-secret-that-is-longer-than-thirty-two-characters
+      PORT: 8787
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: elite
+          POSTGRES_PASSWORD: elite
+          POSTGRES_DB: elite_estimating
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U elite -d elite_estimating"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,3 +42,19 @@ jobs:
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: npm run verify
       - run: npm audit --omit=dev --audit-level=high
+      - name: Run database migrations
+        run: npm run migrate
+      - name: Smoke production server readiness
+        run: |
+          node dist/api/server.js > /tmp/elite-estimating.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID || true; cat /tmp/elite-estimating.log' EXIT
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8787/ready > /tmp/ready.json; then break; fi
+            sleep 1
+          done
+          cat /tmp/ready.json
+          grep -q '"status":"ready"' /tmp/ready.json
+          curl --fail --silent http://127.0.0.1:8787/health | grep -q '"status":"ok"'
+      - name: Build production container
+        run: docker build -t elite-estimating:ci .
