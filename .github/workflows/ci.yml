@@ -44,6 +44,8 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - name: Run database migrations
         run: npm run migrate
+      - name: Smoke atomic supplement approval transaction
+        run: npm run smoke:postgres:transactions
       - name: Smoke production server readiness
         run: |
           node dist/api/server.js > /tmp/elite-estimating.log 2>&1 &
