@@ -55,10 +55,10 @@ export class SupplementService {
     }));
   }
 
-  async create(principal: Principal, estimateId: string): Promise<Supplement> {
+  async create(principal: Principal, estimateId: string, id?: string): Promise<Supplement> {
     authorize(principal, 'supplement:create', principal.tenantId);
     const estimate = await this.getEstimate(principal, estimateId);
-    const saved = await this.supplements.create(principal.tenantId, createSupplement(estimate));
+    const saved = await this.supplements.create(principal.tenantId, createSupplement(estimate, id));
     await this.emit('supplement.created', principal.tenantId, saved);
     return saved;
   }
