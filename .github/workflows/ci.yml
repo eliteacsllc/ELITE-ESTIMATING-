@@ -15,7 +15,7 @@ concurrency:
 jobs:
   core:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     env:
       DATABASE_URL: postgresql://elite:elite@127.0.0.1:5432/elite_estimating
       ELITE_AUTH_SECRET: ci-only-secret-that-is-longer-than-thirty-two-characters
@@ -45,6 +45,11 @@ jobs:
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: npm run verify
       - run: npm audit --omit=dev --audit-level=high
+      - name: Typecheck Cloudflare Containers adapter
+        working-directory: deploy/cloudflare
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run check
       - name: Run database migrations
         run: npm run migrate
       - name: Smoke distributed PostgreSQL rate limiting
