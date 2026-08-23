@@ -129,7 +129,7 @@ export class EstimatingService {
     const current = await this.get(principal, id);
     if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
     assertValid(lines.flatMap((line) => validateEstimateLineInput(line, current.currency)));
-    const saved = await this.repository.save(recalculate({ ...current, lines, status: 'review' }));
+    const saved = await this.repository.save(recalculate({ ...current, lines, status: 'review' }), current.updatedAt);
     await this.record(principal, 'estimate.lines_replaced', saved, { lineCount: lines.length });
     await this.emit('estimate.lines_updated', saved, { lineCount: lines.length, totalMinor: saved.total.amountMinor, currency: saved.currency });
     return saved;
@@ -143,7 +143,7 @@ export class EstimatingService {
     if (current.lines.some((line) => !line.humanApproved)) throw new Error('human_approval_required');
     const findings = evaluateCarrierRules(current, this.carrierRules);
     assertNoBlockingFindings(findings);
-    const saved = await this.repository.save({ ...recalculate(current), status: 'approved' });
+    const saved = await this.repository.save({ ...recalculate(current), status: 'approved' }, current.updatedAt);
     await this.record(principal, 'estimate.approved', saved, { carrierFindingCount: findings.length });
     await this.emit('estimate.approved', saved, { totalMinor: saved.total.amountMinor, currency: saved.currency });
     return saved;
@@ -152,7 +152,7 @@ export class EstimatingService {
   async void(principal: Principal, id: string): Promise<Estimate> {
     authorize(principal, 'estimate:void', principal.tenantId);
     const current = await this.get(principal, id);
-    const saved = await this.repository.save({ ...current, status: 'void', updatedAt: new Date().toISOString() });
+    const saved = await this.repository.save({ ...current, status: 'void', updatedAt: new Date().toISOString() }, current.updatedAt);
     await this.record(principal, 'estimate.voided', saved);
     await this.emit('estimate.voided', saved);
     return saved;
