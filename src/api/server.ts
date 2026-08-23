@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EstimatingService } from '../application/estimating-service.js';
 import { SupplementService } from '../application/supplement-service.js';
@@ -23,6 +24,7 @@ import type { RegisterEvidenceInput } from '../evidence/types.js';
 import type { DamageGraph } from '../damage/graph.js';
 import { DamageGraphService } from '../damage/service.js';
 import { InMemoryDamageGraphRepository, PostgresDamageGraphRepository, type DamageGraphRepository } from '../damage/repository.js';
+import { HttpMetrics, normalizeMetricRoute } from '../observability/metrics.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
 import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
@@ -30,6 +32,8 @@ import { supplementManagerCss, supplementManagerJs } from '../web/supplement-man
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
 const requireBlobStorage = process.env.ELITE_REQUIRE_BLOB_STORAGE === '1';
+const metricsToken = process.env.ELITE_METRICS_TOKEN?.trim() || null;
+if (metricsToken && metricsToken.length < 32) throw new Error('metrics_token_too_short');
 const oidcConfig = oidcConfigFromEnv();
 const oidcVerifier = oidcConfig ? new OidcPrincipalVerifier(oidcConfig) : null;
 const r2Config = r2BlobStoreConfigFromEnv();
@@ -54,6 +58,7 @@ const evidenceTransferService = blobStore ? new EvidenceTransferService(reposito
 const damageGraphService = new DamageGraphService(repository, damageGraphRepository);
 const importService = new EstimateImportService(service, repository, importReceiptRepository);
 const interchange = new EliteJsonInterchangeAdapter();
+const httpMetrics = new HttpMetrics();
 
 function baseHeaders(): Record<string, string> {
   return {
@@ -100,6 +105,15 @@ async function json(req: IncomingMessage): Promise<Record<string, unknown>> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
 }
 
+function metricsAuthorized(req: IncomingMessage): boolean {
+  if (!metricsToken) return false;
+  const authorization = req.headers.authorization;
+  if (!authorization?.startsWith('Bearer ')) return false;
+  const supplied = Buffer.from(authorization.slice(7));
+  const expected = Buffer.from(metricsToken);
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
+
 async function principal(req: IncomingMessage): Promise<Principal> {
   const authorization = req.headers.authorization;
   if (!authorization?.startsWith('Bearer ')) throw new Error('unauthorized');
@@ -116,7 +130,7 @@ async function principal(req: IncomingMessage): Promise<Principal> {
 function requestUrl(url = '/'): URL { return new URL(url, 'http://localhost'); }
 function pathParts(url = '/'): string[] { return requestUrl(url).pathname.split('/').filter(Boolean); }
 
-async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean; evidenceStorage: boolean; damageGraphStorage: boolean; importReceiptStorage: boolean; blobStorageConfigured: boolean; blobStorageRequired: boolean }> {
+async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean; evidenceStorage: boolean; damageGraphStorage: boolean; importReceiptStorage: boolean; blobStorageConfigured: boolean; blobStorageRequired: boolean; metricsConfigured: boolean }> {
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
@@ -140,11 +154,24 @@ async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; a
     importReceiptStorage,
     blobStorageConfigured,
     blobStorageRequired: requireBlobStorage,
+    metricsConfigured: Boolean(metricsToken),
   };
 }
 
 const server = createServer(async (req, res) => {
+  const started = process.hrtime.bigint();
+  const metricRoute = normalizeMetricRoute(req.url);
+  httpMetrics.begin();
+  res.once('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - started) / 1_000_000;
+    httpMetrics.record(req.method ?? 'UNKNOWN', metricRoute, res.statusCode, durationMs);
+  });
+
   try {
+    if (req.method === 'GET' && req.url === '/metrics') {
+      if (!metricsAuthorized(req)) return send(res, 404, { error: 'not_found' });
+      return sendText(res, 200, 'text/plain; version=0.0.4; charset=utf-8', httpMetrics.renderPrometheus(), "default-src 'none'; frame-ancestors 'none'");
+    }
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
       const html = indexHtml
         .replace('</head>', '<link rel="stylesheet" href="/ops.css"><link rel="stylesheet" href="/supp.css"></head>')
