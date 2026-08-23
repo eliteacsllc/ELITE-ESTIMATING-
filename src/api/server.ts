@@ -10,6 +10,7 @@ import { verifyHs256Token } from '../security/token.js';
 import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
 import type { AddSupplementChangeInput } from '../application/supplement-service.js';
+import { EliteJsonInterchangeAdapter } from '../interchange/elite-json.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -21,6 +22,7 @@ const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimat
 const supplementRepository: SupplementRepository = postgresSupplements ?? new InMemorySupplementRepository();
 const service = new EstimatingService(repository, [], auditSink);
 const supplementService = new SupplementService(repository, supplementRepository);
+const interchange = new EliteJsonInterchangeAdapter();
 
 function baseHeaders(): Record<string, string> {
   return {
@@ -43,9 +45,10 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
-function sendText(res: ServerResponse, status: number, contentType: string, payload: string, csp?: string): void {
+function sendText(res: ServerResponse, status: number, contentType: string, payload: string, csp?: string, extra: Record<string, string> = {}): void {
   res.writeHead(status, {
     ...baseHeaders(),
+    ...extra,
     'content-type': contentType,
     'content-length': Buffer.byteLength(payload),
     ...(csp ? { 'content-security-policy': csp } : {}),
@@ -74,8 +77,12 @@ function principal(req: IncomingMessage): Principal {
   return { userId: claims.userId, tenantId: claims.tenantId, roles: claims.roles };
 }
 
+function requestUrl(url = '/'): URL {
+  return new URL(url, 'http://localhost');
+}
+
 function pathParts(url = '/'): string[] {
-  return new URL(url, 'http://localhost').pathname.split('/').filter(Boolean);
+  return requestUrl(url).pathname.split('/').filter(Boolean);
 }
 
 async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; durableStorage: boolean; databaseHealthy: boolean }> {
@@ -99,21 +106,31 @@ const server = createServer(async (req, res) => {
     }
 
     const actor = principal(req);
+    const url = requestUrl(req.url);
     const parts = pathParts(req.url);
 
-    if (req.method === 'POST' && parts.join('/') === 'v1/estimates') {
-      const body = await json(req);
-      if (!body.asset || typeof body.asset !== 'object') throw new Error('asset_required');
-      const claimId = typeof body.claimId === 'string' && body.claimId.trim() ? body.claimId.trim() : null;
-      const estimate = await service.create(actor, {
-        tenantId: actor.tenantId,
-        ...(claimId ? { claimId } : {}),
-        asset: body.asset as never,
-        locale: String(body.locale ?? 'en-US'),
-        currency: String(body.currency ?? 'USD'),
-        jurisdiction: String(body.jurisdiction ?? 'US'),
-      });
-      return send(res, 201, estimate);
+    if (parts.join('/') === 'v1/estimates') {
+      if (req.method === 'POST') {
+        const body = await json(req);
+        if (!body.asset || typeof body.asset !== 'object') throw new Error('asset_required');
+        const claimId = typeof body.claimId === 'string' && body.claimId.trim() ? body.claimId.trim() : null;
+        const estimate = await service.create(actor, {
+          tenantId: actor.tenantId,
+          ...(claimId ? { claimId } : {}),
+          asset: body.asset as never,
+          locale: String(body.locale ?? 'en-US'),
+          currency: String(body.currency ?? 'USD'),
+          jurisdiction: String(body.jurisdiction ?? 'US'),
+        });
+        return send(res, 201, estimate);
+      }
+      if (req.method === 'GET') {
+        const claimId = url.searchParams.get('claimId');
+        if (claimId) return send(res, 200, await service.listByClaim(actor, claimId));
+        const requested = Number(url.searchParams.get('limit') ?? 25);
+        const limit = Number.isFinite(requested) ? requested : 25;
+        return send(res, 200, await service.listRecent(actor, limit));
+      }
     }
 
     if (parts[0] === 'v1' && parts[1] === 'supplements' && parts[2]) {
@@ -129,6 +146,13 @@ const server = createServer(async (req, res) => {
     if (parts[0] === 'v1' && parts[1] === 'estimates' && parts[2]) {
       const id = parts[2];
       if (req.method === 'GET' && parts.length === 3) return send(res, 200, await service.get(actor, id));
+      if (req.method === 'GET' && parts[3] === 'export') {
+        const estimate = await service.get(actor, id);
+        const payload = new TextDecoder().decode(interchange.exportEstimate(estimate));
+        return sendText(res, 200, 'application/json; charset=utf-8', payload, undefined, {
+          'content-disposition': `attachment; filename="elite-estimate-${estimate.id}.json"`,
+        });
+      }
       if (parts[3] === 'supplements' && parts.length === 4) {
         if (req.method === 'POST') return send(res, 201, await supplementService.create(actor, id));
         if (req.method === 'GET') return send(res, 200, await supplementService.list(actor, id));
