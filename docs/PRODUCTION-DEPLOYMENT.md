@@ -4,7 +4,9 @@ Elite Estimating production deployment is manual, evidence-gated, and container-
 
 ## Production GitHub environment
 
-Create a GitHub Environment named `production`. Configure environment protection/approvals if available for the repository plan. The deploy and rollback workflows both target this environment.
+The production workflows target a GitHub Environment named `production`. You can create it manually under **Settings → Environments**, or run **Actions → Diagnose Elite Estimating Production Setup** once: GitHub creates an environment referenced by a workflow if it does not already exist. Configure environment protection/approvals afterward if available for the repository plan.
+
+Before attempting a deploy, use **Actions → Diagnose Elite Estimating Production Setup → Run workflow**. This workflow does not deploy anything. It reports missing environment-secret names in the GitHub job summary without printing secret values, optionally validates the production HTTPS origin, and runs the real launch-certification checker when the secret inventory is complete.
 
 ## Required GitHub production secrets
 
@@ -22,6 +24,8 @@ Configure these values as GitHub Environment secrets, never repository files:
 - `ELITE_CLAIMS_WEBHOOK_URL` — HTTPS endpoint owned by Claims Management.
 - `ELITE_CLAIMS_WEBHOOK_SECRET` — webhook signing secret, minimum 32 characters.
 - `ELITE_LAUNCH_MANIFEST_JSON` — the complete validated launch evidence manifest for the market being launched.
+
+GitHub environment secrets can be added in the web UI under **Settings → Environments → production → Environment secrets**, or with GitHub CLI using `gh secret set --env production SECRET_NAME`. Secret values must never be committed to this repository.
 
 The deployment workflow refuses to run when a required secret is absent. `deploy/cloudflare/wrangler.jsonc` also declares the Worker runtime secret contract so Wrangler independently rejects incomplete Worker secret configuration.
 
