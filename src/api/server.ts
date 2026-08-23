@@ -13,6 +13,9 @@ import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
 import type { AddSupplementChangeInput } from '../application/supplement-service.js';
 import { EliteJsonInterchangeAdapter } from '../interchange/elite-json.js';
+import { InMemoryEvidenceRepository, PostgresEvidenceRepository, type EvidenceRepository } from '../evidence/repository.js';
+import { EvidenceService } from '../evidence/service.js';
+import type { RegisterEvidenceInput } from '../evidence/types.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
 import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
@@ -23,13 +26,16 @@ const oidcConfig = oidcConfigFromEnv();
 const oidcVerifier = oidcConfig ? new OidcPrincipalVerifier(oidcConfig) : null;
 const postgresRepository = databaseUrl ? new PostgresEstimateRepository(databaseUrl) : null;
 const postgresSupplements = databaseUrl ? new PostgresSupplementRepository(databaseUrl) : null;
+const postgresEvidence = databaseUrl ? new PostgresEvidenceRepository(databaseUrl) : null;
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
 const supplementRepository: SupplementRepository = postgresSupplements ?? new InMemorySupplementRepository();
+const evidenceRepository: EvidenceRepository = postgresEvidence ?? new InMemoryEvidenceRepository();
 const lifecycleSink: LifecycleSink = postgresOutbox ?? new MemoryLifecycleSink();
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
 const supplementService = new SupplementService(repository, supplementRepository, lifecycleSink);
+const evidenceService = new EvidenceService(repository, evidenceRepository);
 const interchange = new EliteJsonInterchangeAdapter();
 
 function baseHeaders(): Record<string, string> {
@@ -82,11 +88,7 @@ async function principal(req: IncomingMessage): Promise<Principal> {
   if (!authorization?.startsWith('Bearer ')) throw new Error('unauthorized');
   const token = authorization.slice(7);
   if (oidcVerifier) {
-    try {
-      return await oidcVerifier.verify(token);
-    } catch {
-      throw new Error('unauthorized');
-    }
+    try { return await oidcVerifier.verify(token); } catch { throw new Error('unauthorized'); }
   }
   const secret = process.env.ELITE_AUTH_SECRET;
   if (!secret || secret.length < 32) throw new Error('unauthorized');
@@ -94,22 +96,18 @@ async function principal(req: IncomingMessage): Promise<Principal> {
   return { userId: claims.userId, tenantId: claims.tenantId, roles: claims.roles };
 }
 
-function requestUrl(url = '/'): URL {
-  return new URL(url, 'http://localhost');
-}
+function requestUrl(url = '/'): URL { return new URL(url, 'http://localhost'); }
+function pathParts(url = '/'): string[] { return requestUrl(url).pathname.split('/').filter(Boolean); }
 
-function pathParts(url = '/'): string[] {
-  return requestUrl(url).pathname.split('/').filter(Boolean);
-}
-
-async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean }> {
+async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean; evidenceStorage: boolean }> {
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
-  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresOutbox);
+  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresOutbox);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
   const lifecycleOutbox = Boolean(postgresOutbox) || allowEphemeral;
-  return { ready: authConfigured && databaseHealthy && lifecycleOutbox && (durableStorage || allowEphemeral), authConfigured, authMode, durableStorage, databaseHealthy, lifecycleOutbox };
+  const evidenceStorage = Boolean(postgresEvidence) || allowEphemeral;
+  return { ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && (durableStorage || allowEphemeral), authConfigured, authMode, durableStorage, databaseHealthy, lifecycleOutbox, evidenceStorage };
 }
 
 const server = createServer(async (req, res) => {
@@ -176,9 +174,11 @@ const server = createServer(async (req, res) => {
       if (req.method === 'GET' && parts[3] === 'export') {
         const estimate = await service.get(actor, id);
         const payload = new TextDecoder().decode(interchange.exportEstimate(estimate));
-        return sendText(res, 200, 'application/json; charset=utf-8', payload, undefined, {
-          'content-disposition': `attachment; filename="elite-estimate-${estimate.id}.json"`,
-        });
+        return sendText(res, 200, 'application/json; charset=utf-8', payload, undefined, { 'content-disposition': `attachment; filename="elite-estimate-${estimate.id}.json"` });
+      }
+      if (parts[3] === 'evidence' && parts.length === 4) {
+        if (req.method === 'GET') return send(res, 200, await evidenceService.list(actor, id));
+        if (req.method === 'POST') return send(res, 201, await evidenceService.register(actor, id, await json(req) as RegisterEvidenceInput));
       }
       if (parts[3] === 'supplements' && parts.length === 4) {
         if (req.method === 'POST') return send(res, 201, await supplementService.create(actor, id));
@@ -206,9 +206,7 @@ const server = createServer(async (req, res) => {
 });
 
 const port = Number(process.env.PORT ?? 8787);
-server.listen(port, '0.0.0.0', () => {
-  console.log(`elite-estimating listening on ${port}`);
-});
+server.listen(port, '0.0.0.0', () => { console.log(`elite-estimating listening on ${port}`); });
 
 let closing = false;
 const shutdown = async () => {
@@ -217,6 +215,7 @@ const shutdown = async () => {
   server.close();
   if (postgresRepository) await postgresRepository.close();
   if (postgresSupplements) await postgresSupplements.close();
+  if (postgresEvidence) await postgresEvidence.close();
   if (postgresOutbox) await postgresOutbox.close();
   if (auditSink instanceof PostgresAuditSink) await auditSink.close();
 };
