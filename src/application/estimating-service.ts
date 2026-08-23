@@ -94,6 +94,19 @@ export class EstimatingService {
     return estimate;
   }
 
+  async listRecent(principal: Principal, limit = 25): Promise<Estimate[]> {
+    authorize(principal, 'estimate:read', principal.tenantId);
+    return this.repository.listRecent(principal.tenantId, limit);
+  }
+
+  async listByClaim(principal: Principal, claimId: string): Promise<Estimate[]> {
+    authorize(principal, 'estimate:read', principal.tenantId);
+    const normalized = claimId.trim();
+    if (!normalized) throw new Error('claim_id_required');
+    if (normalized.length > 120) throw new Error('validation_failed:claim_id_too_long');
+    return this.repository.listByClaim(principal.tenantId, normalized);
+  }
+
   async replaceLines(principal: Principal, id: string, lines: EstimateLine[]): Promise<Estimate> {
     authorize(principal, 'estimate:update', principal.tenantId);
     const current = await this.get(principal, id);
