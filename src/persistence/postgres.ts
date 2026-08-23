@@ -62,4 +62,13 @@ export class PostgresEstimateRepository implements EstimateRepository {
     );
     return result.rows.map((row) => row.payload as Estimate);
   }
+
+  async listRecent(tenantId: string, limit: number): Promise<Estimate[]> {
+    const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 100));
+    const result = await this.pool.query(
+      'SELECT payload FROM estimates WHERE tenant_id=$1 ORDER BY updated_at DESC LIMIT $2',
+      [tenantId, safeLimit],
+    );
+    return result.rows.map((row) => row.payload as Estimate);
+  }
 }
