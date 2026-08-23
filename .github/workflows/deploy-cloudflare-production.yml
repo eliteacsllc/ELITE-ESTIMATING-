@@ -47,11 +47,15 @@ jobs:
       ELITE_OUTBOX_MAX_EXHAUSTED: '0'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            deploy/cloudflare/package-lock.json
 
       - name: Validate deployment inputs
         shell: bash
@@ -90,7 +94,7 @@ jobs:
 
       - name: Install and verify application
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npm run verify
           npm audit --omit=dev --audit-level=high
 
@@ -107,7 +111,7 @@ jobs:
       - name: Typecheck Cloudflare deployment adapter
         working-directory: deploy/cloudflare
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npm run check
 
       - name: Build production container locally
