@@ -1,0 +1,98 @@
+import { randomUUID } from 'node:crypto';
+import type { AssetIdentity, Estimate, EstimateLine, Money } from '../domain/types.js';
+import { auditEstimateLines, lineTotal } from '../engine/estimate.js';
+import type { EstimateRepository } from '../persistence/repository.js';
+import type { Principal } from '../security/rbac.js';
+import { authorize } from '../security/rbac.js';
+import type { CarrierRule } from '../rules/carrier.js';
+import { assertNoBlockingFindings, evaluateCarrierRules } from '../rules/carrier.js';
+
+export type CreateEstimateInput = {
+  tenantId: string;
+  claimId?: string;
+  asset: AssetIdentity;
+  locale: string;
+  currency: string;
+  jurisdiction: string;
+};
+
+function money(amountMinor: number, currency: string): Money {
+  return { amountMinor, currency };
+}
+
+function recalculate(estimate: Estimate): Estimate {
+  const lines = estimate.lines.map((line) => ({ ...line, total: lineTotal(line) }));
+  const subtotalMinor = lines.reduce((sum, line) => sum + line.total.amountMinor - (line.tax?.amountMinor ?? 0), 0);
+  const taxMinor = lines.reduce((sum, line) => sum + (line.tax?.amountMinor ?? 0), 0);
+  return {
+    ...estimate,
+    lines,
+    subtotal: money(subtotalMinor, estimate.currency),
+    tax: money(taxMinor, estimate.currency),
+    total: money(subtotalMinor + taxMinor, estimate.currency),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export class EstimatingService {
+  constructor(
+    private readonly repository: EstimateRepository,
+    private readonly carrierRules: CarrierRule[] = [],
+  ) {}
+
+  async create(principal: Principal, input: CreateEstimateInput): Promise<Estimate> {
+    authorize(principal, 'estimate:create', input.tenantId);
+    const now = new Date().toISOString();
+    const estimate: Estimate = {
+      id: randomUUID(),
+      tenantId: input.tenantId,
+      claimId: input.claimId,
+      asset: input.asset,
+      locale: input.locale,
+      currency: input.currency.toUpperCase(),
+      jurisdiction: input.jurisdiction,
+      lines: [],
+      subtotal: money(0, input.currency.toUpperCase()),
+      tax: money(0, input.currency.toUpperCase()),
+      total: money(0, input.currency.toUpperCase()),
+      status: 'draft',
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    return this.repository.create(estimate);
+  }
+
+  async get(principal: Principal, id: string): Promise<Estimate> {
+    authorize(principal, 'estimate:read', principal.tenantId);
+    const estimate = await this.repository.getById(principal.tenantId, id);
+    if (!estimate) throw new Error('estimate_not_found');
+    return estimate;
+  }
+
+  async replaceLines(principal: Principal, id: string, lines: EstimateLine[]): Promise<Estimate> {
+    authorize(principal, 'estimate:update', principal.tenantId);
+    const current = await this.get(principal, id);
+    if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
+    const currencyMismatch = lines.some((line) => line.total.currency !== current.currency);
+    if (currencyMismatch) throw new Error('estimate_currency_mismatch');
+    return this.repository.save(recalculate({ ...current, lines, status: 'review' }));
+  }
+
+  async approve(principal: Principal, id: string): Promise<Estimate> {
+    authorize(principal, 'estimate:approve', principal.tenantId);
+    const current = await this.get(principal, id);
+    const errors = auditEstimateLines(current.lines);
+    if (errors.length > 0) throw new Error(`estimate_audit_failed:${errors.join('|')}`);
+    if (current.lines.some((line) => !line.humanApproved)) throw new Error('human_approval_required');
+    const findings = evaluateCarrierRules(current, this.carrierRules);
+    assertNoBlockingFindings(findings);
+    return this.repository.save({ ...recalculate(current), status: 'approved' });
+  }
+
+  async void(principal: Principal, id: string): Promise<Estimate> {
+    authorize(principal, 'estimate:void', principal.tenantId);
+    const current = await this.get(principal, id);
+    return this.repository.save({ ...current, status: 'void', updatedAt: new Date().toISOString() });
+  }
+}
