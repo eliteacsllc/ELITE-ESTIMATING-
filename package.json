@@ -1,6 +1,6 @@
 {
   "name": "elite-estimating",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "test": "npm run build && node --test dist/**/*.test.js",
     "start": "node dist/api/server.js",
     "migrate": "node dist/persistence/migrate.js",
+    "smoke:http": "node dist/api/http-smoke.js",
     "smoke:postgres:transactions": "node dist/persistence/postgres-transaction-smoke.js",
     "smoke:postgres:schema": "node dist/persistence/schema-smoke.js",
     "dispatch:outbox": "node dist/integrations/dispatch-worker.js",
