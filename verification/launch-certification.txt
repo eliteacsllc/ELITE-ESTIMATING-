@@ -1,0 +1,1 @@
+Launch certification checkpoint: validated manifest schema, red-by-default evidence template, CLI blocker exit codes, tests, package export, and operator documentation.
