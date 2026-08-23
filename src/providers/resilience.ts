@@ -21,9 +21,9 @@ export class ProviderCircuitBreaker {
   private consecutiveFailures = 0;
   private successes = 0;
   private failures = 0;
-  private lastLatencyMs?: number;
-  private lastError?: string;
-  private openedAtMs?: number;
+  private lastLatencyMs: number | undefined;
+  private lastError: string | undefined;
+  private openedAtMs: number | undefined;
 
   constructor(
     readonly providerId: string,
