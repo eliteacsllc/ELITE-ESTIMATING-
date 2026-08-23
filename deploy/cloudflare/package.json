@@ -7,10 +7,10 @@
     "deploy": "wrangler deploy --config wrangler.jsonc"
   },
   "dependencies": {
-    "@cloudflare/containers": "^0.0.28"
+    "@cloudflare/containers": "0.3.7"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
-    "wrangler": "^4.33.1"
+    "wrangler": "4.125.0"
   }
 }
