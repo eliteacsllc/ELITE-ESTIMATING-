@@ -19,6 +19,9 @@ jobs:
     env:
       DATABASE_URL: postgresql://elite:elite@127.0.0.1:5432/elite_estimating
       ELITE_AUTH_SECRET: ci-only-secret-that-is-longer-than-thirty-two-characters
+      ELITE_REQUIRE_RATE_LIMIT: 1
+      ELITE_RATE_LIMIT_CAPACITY: 100
+      ELITE_RATE_LIMIT_REFILL_PER_SECOND: 10
       PORT: 8787
     services:
       postgres:
@@ -44,6 +47,8 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - name: Run database migrations
         run: npm run migrate
+      - name: Smoke distributed PostgreSQL rate limiting
+        run: npm run smoke:postgres:rate-limit
       - name: Smoke atomic supplement approval transaction
         run: npm run smoke:postgres:transactions
       - name: Smoke primary database schema integrity
@@ -83,6 +88,8 @@ jobs:
           done
           cat /tmp/ready.json
           grep -q '"status":"ready"' /tmp/ready.json
+          grep -q '"rateLimitDurable":true' /tmp/ready.json
+          grep -q '"rateLimitHealthy":true' /tmp/ready.json
           curl --fail --silent http://127.0.0.1:8787/health | grep -q '"status":"ok"'
           npm run smoke:http
       - name: Build production container
