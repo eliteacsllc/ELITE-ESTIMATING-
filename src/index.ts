@@ -29,3 +29,4 @@ export * from './evidence/repository.js';
 export * from './evidence/service.js';
 export * from './damage/graph.js';
 export * from './property/measurement.js';
+export * from './property/scope.js';
