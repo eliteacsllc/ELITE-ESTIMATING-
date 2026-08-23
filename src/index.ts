@@ -21,6 +21,8 @@ export * from './security/token.js';
 export * from './security/oidc.js';
 export * from './workflows/supplement.js';
 export * from './interchange/elite-json.js';
+export * from './interchange/import-repository.js';
+export * from './interchange/import-service.js';
 export * from './audit/audit.js';
 export * from './integrations/outbox.js';
 export * from './integrations/dispatcher.js';
