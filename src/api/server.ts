@@ -14,6 +14,7 @@ import type { AddSupplementChangeInput } from '../application/supplement-service
 import { EliteJsonInterchangeAdapter } from '../interchange/elite-json.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
+import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
@@ -101,14 +102,16 @@ const server = createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
       const html = indexHtml
-        .replace('</head>', '<link rel="stylesheet" href="/ops.css"></head>')
-        .replace('</body>', '<script src="/ops.js" defer></script></body>');
+        .replace('</head>', '<link rel="stylesheet" href="/ops.css"><link rel="stylesheet" href="/supp.css"></head>')
+        .replace('</body>', '<script src="/ops.js" defer></script><script src="/supp.js" defer></script></body>');
       return sendText(res, 200, 'text/html; charset=utf-8', html, "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     }
     if (req.method === 'GET' && req.url === '/app.js') return sendText(res, 200, 'text/javascript; charset=utf-8', appJs);
     if (req.method === 'GET' && req.url === '/app.css') return sendText(res, 200, 'text/css; charset=utf-8', appCss);
     if (req.method === 'GET' && req.url === '/ops.js') return sendText(res, 200, 'text/javascript; charset=utf-8', operationsJs);
     if (req.method === 'GET' && req.url === '/ops.css') return sendText(res, 200, 'text/css; charset=utf-8', operationsCss);
+    if (req.method === 'GET' && req.url === '/supp.js') return sendText(res, 200, 'text/javascript; charset=utf-8', supplementManagerJs);
+    if (req.method === 'GET' && req.url === '/supp.css') return sendText(res, 200, 'text/css; charset=utf-8', supplementManagerCss);
     if (req.method === 'GET' && req.url === '/health') return send(res, 200, { status: 'ok', service: 'elite-estimating' });
     if (req.method === 'GET' && req.url === '/ready') {
       const state = await readiness();
