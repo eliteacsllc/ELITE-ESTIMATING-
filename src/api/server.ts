@@ -1,20 +1,26 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EstimatingService } from '../application/estimating-service.js';
+import { SupplementService } from '../application/supplement-service.js';
 import { InMemoryEstimateRepository } from '../persistence/memory.js';
 import { PostgresEstimateRepository } from '../persistence/postgres.js';
 import type { EstimateRepository } from '../persistence/repository.js';
+import { InMemorySupplementRepository, PostgresSupplementRepository, type SupplementRepository } from '../persistence/supplements.js';
 import { NoopAuditSink, PostgresAuditSink } from '../audit/audit.js';
 import { verifyHs256Token } from '../security/token.js';
 import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
+import type { AddSupplementChangeInput } from '../application/supplement-service.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
 const postgresRepository = databaseUrl ? new PostgresEstimateRepository(databaseUrl) : null;
+const postgresSupplements = databaseUrl ? new PostgresSupplementRepository(databaseUrl) : null;
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
+const supplementRepository: SupplementRepository = postgresSupplements ?? new InMemorySupplementRepository();
 const service = new EstimatingService(repository, [], auditSink);
+const supplementService = new SupplementService(repository, supplementRepository);
 
 function baseHeaders(): Record<string, string> {
   return {
@@ -74,7 +80,7 @@ function pathParts(url = '/'): string[] {
 
 async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; durableStorage: boolean; databaseHealthy: boolean }> {
   const authConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
-  const durableStorage = Boolean(postgresRepository);
+  const durableStorage = Boolean(postgresRepository && postgresSupplements);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
   return { ready: authConfigured && databaseHealthy && (durableStorage || allowEphemeral), authConfigured, durableStorage, databaseHealthy };
 }
@@ -110,9 +116,23 @@ const server = createServer(async (req, res) => {
       return send(res, 201, estimate);
     }
 
+    if (parts[0] === 'v1' && parts[1] === 'supplements' && parts[2]) {
+      const supplementId = parts[2];
+      if (req.method === 'POST' && parts[3] === 'changes') {
+        const body = await json(req);
+        return send(res, 200, await supplementService.addChange(actor, supplementId, body as AddSupplementChangeInput));
+      }
+      if (req.method === 'POST' && parts[3] === 'submit') return send(res, 200, await supplementService.submit(actor, supplementId));
+      if (req.method === 'POST' && parts[3] === 'approve') return send(res, 200, await supplementService.approve(actor, supplementId));
+    }
+
     if (parts[0] === 'v1' && parts[1] === 'estimates' && parts[2]) {
       const id = parts[2];
       if (req.method === 'GET' && parts.length === 3) return send(res, 200, await service.get(actor, id));
+      if (parts[3] === 'supplements' && parts.length === 4) {
+        if (req.method === 'POST') return send(res, 201, await supplementService.create(actor, id));
+        if (req.method === 'GET') return send(res, 200, await supplementService.list(actor, id));
+      }
       if (req.method === 'PUT' && parts[3] === 'lines') {
         const body = await json(req);
         if (!Array.isArray(body.lines)) throw new Error('lines_array_required');
@@ -127,7 +147,7 @@ const server = createServer(async (req, res) => {
     const message = error instanceof Error ? error.message : 'unknown_error';
     const status = message === 'unauthorized' || message.startsWith('invalid_token') || message === 'token_expired' ? 401
       : message.includes('not_permitted') || message.includes('access_denied') ? 403
-      : message === 'estimate_not_found' ? 404
+      : message === 'estimate_not_found' || message === 'supplement_not_found' ? 404
       : message === 'request_too_large' ? 413
       : 400;
     return send(res, status, { error: message });
@@ -145,6 +165,7 @@ const shutdown = async () => {
   closing = true;
   server.close();
   if (postgresRepository) await postgresRepository.close();
+  if (postgresSupplements) await postgresSupplements.close();
   if (auditSink instanceof PostgresAuditSink) await auditSink.close();
 };
 process.on('SIGTERM', shutdown);
