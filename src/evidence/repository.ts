@@ -4,19 +4,24 @@ import type { EvidenceAsset } from './types.js';
 export interface EvidenceRepository {
   create(asset: EvidenceAsset): Promise<EvidenceAsset>;
   getById(tenantId: string, id: string): Promise<EvidenceAsset | null>;
+  getBySource(tenantId: string, estimateId: string, sourceSystem: string, sourceAssetId: string): Promise<EvidenceAsset | null>;
   listByEstimate(tenantId: string, estimateId: string): Promise<EvidenceAsset[]>;
 }
 
 export class InMemoryEvidenceRepository implements EvidenceRepository {
   private readonly rows = new Map<string, EvidenceAsset>();
   async create(asset: EvidenceAsset): Promise<EvidenceAsset> {
-    const duplicate = [...this.rows.values()].some(row => row.tenantId === asset.tenantId && row.estimateId === asset.estimateId && row.sourceSystem === asset.sourceSystem && row.sourceAssetId === asset.sourceAssetId);
+    const duplicate = await this.getBySource(asset.tenantId, asset.estimateId, asset.sourceSystem, asset.sourceAssetId);
     if (duplicate) throw new Error('evidence_source_already_registered');
     this.rows.set(`${asset.tenantId}:${asset.id}`, structuredClone(asset));
     return structuredClone(asset);
   }
   async getById(tenantId: string, id: string): Promise<EvidenceAsset | null> {
     const row = this.rows.get(`${tenantId}:${id}`);
+    return row ? structuredClone(row) : null;
+  }
+  async getBySource(tenantId: string, estimateId: string, sourceSystem: string, sourceAssetId: string): Promise<EvidenceAsset | null> {
+    const row = [...this.rows.values()].find(item => item.tenantId === tenantId && item.estimateId === estimateId && item.sourceSystem === sourceSystem && item.sourceAssetId === sourceAssetId);
     return row ? structuredClone(row) : null;
   }
   async listByEstimate(tenantId: string, estimateId: string): Promise<EvidenceAsset[]> {
@@ -55,6 +60,15 @@ export class PostgresEvidenceRepository implements EvidenceRepository {
       `SELECT tenant_id,id,estimate_id,source_system,source_asset_id,kind,mime_type,sha256,storage_key,captured_at,metadata,provenance,created_at
        FROM estimate_evidence WHERE tenant_id=$1 AND id=$2 LIMIT 1`,
       [tenantId, id],
+    );
+    return result.rowCount ? this.mapRow(result.rows[0] as Record<string, unknown>) : null;
+  }
+  async getBySource(tenantId: string, estimateId: string, sourceSystem: string, sourceAssetId: string): Promise<EvidenceAsset | null> {
+    const result = await this.pool.query(
+      `SELECT tenant_id,id,estimate_id,source_system,source_asset_id,kind,mime_type,sha256,storage_key,captured_at,metadata,provenance,created_at
+       FROM estimate_evidence
+       WHERE tenant_id=$1 AND estimate_id=$2 AND source_system=$3 AND source_asset_id=$4 LIMIT 1`,
+      [tenantId, estimateId, sourceSystem, sourceAssetId],
     );
     return result.rowCount ? this.mapRow(result.rows[0] as Record<string, unknown>) : null;
   }
