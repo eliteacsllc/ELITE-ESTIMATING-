@@ -17,6 +17,8 @@ import { EstimateImportService } from '../interchange/import-service.js';
 import { InMemoryImportReceiptRepository, PostgresImportReceiptRepository, type ImportReceiptRepository } from '../interchange/import-repository.js';
 import { InMemoryEvidenceRepository, PostgresEvidenceRepository, type EvidenceRepository } from '../evidence/repository.js';
 import { EvidenceService } from '../evidence/service.js';
+import { EvidenceTransferService, type CreateEvidenceUploadIntentInput } from '../evidence/transfer-service.js';
+import { R2EvidenceBlobStore, r2BlobStoreConfigFromEnv } from '../evidence/blob-store.js';
 import type { RegisterEvidenceInput } from '../evidence/types.js';
 import type { DamageGraph } from '../damage/graph.js';
 import { DamageGraphService } from '../damage/service.js';
@@ -27,8 +29,11 @@ import { supplementManagerCss, supplementManagerJs } from '../web/supplement-man
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
+const requireBlobStorage = process.env.ELITE_REQUIRE_BLOB_STORAGE === '1';
 const oidcConfig = oidcConfigFromEnv();
 const oidcVerifier = oidcConfig ? new OidcPrincipalVerifier(oidcConfig) : null;
+const r2Config = r2BlobStoreConfigFromEnv();
+const blobStore = r2Config ? new R2EvidenceBlobStore(r2Config) : null;
 const postgresRepository = databaseUrl ? new PostgresEstimateRepository(databaseUrl) : null;
 const postgresSupplements = databaseUrl ? new PostgresSupplementRepository(databaseUrl) : null;
 const postgresEvidence = databaseUrl ? new PostgresEvidenceRepository(databaseUrl) : null;
@@ -44,7 +49,8 @@ const importReceiptRepository: ImportReceiptRepository = postgresImportReceipts 
 const lifecycleSink: LifecycleSink = postgresOutbox ?? new MemoryLifecycleSink();
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
 const supplementService = new SupplementService(repository, supplementRepository, lifecycleSink);
-const evidenceService = new EvidenceService(repository, evidenceRepository);
+const evidenceService = new EvidenceService(repository, evidenceRepository, blobStore ?? undefined);
+const evidenceTransferService = blobStore ? new EvidenceTransferService(repository, evidenceRepository, blobStore) : null;
 const damageGraphService = new DamageGraphService(repository, damageGraphRepository);
 const importService = new EstimateImportService(service, repository, importReceiptRepository);
 const interchange = new EliteJsonInterchangeAdapter();
@@ -110,7 +116,7 @@ async function principal(req: IncomingMessage): Promise<Principal> {
 function requestUrl(url = '/'): URL { return new URL(url, 'http://localhost'); }
 function pathParts(url = '/'): string[] { return requestUrl(url).pathname.split('/').filter(Boolean); }
 
-async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean; evidenceStorage: boolean; damageGraphStorage: boolean; importReceiptStorage: boolean }> {
+async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean; evidenceStorage: boolean; damageGraphStorage: boolean; importReceiptStorage: boolean; blobStorageConfigured: boolean; blobStorageRequired: boolean }> {
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
@@ -120,8 +126,10 @@ async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; a
   const evidenceStorage = Boolean(postgresEvidence) || allowEphemeral;
   const damageGraphStorage = postgresDamageGraphs ? await postgresDamageGraphs.health().catch(() => false) : allowEphemeral;
   const importReceiptStorage = postgresImportReceipts ? await postgresImportReceipts.health().catch(() => false) : allowEphemeral;
+  const blobStorageConfigured = Boolean(blobStore);
+  const blobReady = !requireBlobStorage || blobStorageConfigured;
   return {
-    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && (durableStorage || allowEphemeral),
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && blobReady && (durableStorage || allowEphemeral),
     authConfigured,
     authMode,
     durableStorage,
@@ -130,6 +138,8 @@ async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; a
     evidenceStorage,
     damageGraphStorage,
     importReceiptStorage,
+    blobStorageConfigured,
+    blobStorageRequired: requireBlobStorage,
   };
 }
 
@@ -160,6 +170,11 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && parts.join('/') === 'v1/imports/elite-json') {
       const result = await importService.importElite(actor, await json(req) as unknown as EliteEstimateEnvelope);
       return send(res, result.idempotent ? 200 : 201, result);
+    }
+
+    if (parts[0] === 'v1' && parts[1] === 'evidence' && parts[2] && req.method === 'GET' && parts[3] === 'download') {
+      if (!evidenceTransferService) throw new Error('blob_storage_not_configured');
+      return send(res, 200, await evidenceTransferService.createDownloadUrl(actor, parts[2]));
     }
 
     if (parts.join('/') === 'v1/estimates') {
@@ -213,6 +228,10 @@ const server = createServer(async (req, res) => {
         const payload = new TextDecoder().decode(interchange.exportEstimate(estimate));
         return sendText(res, 200, 'application/json; charset=utf-8', payload, undefined, { 'content-disposition': `attachment; filename="elite-estimate-${estimate.id}.json"` });
       }
+      if (parts[3] === 'evidence' && parts[4] === 'upload-intent' && parts.length === 5 && req.method === 'POST') {
+        if (!evidenceTransferService) throw new Error('blob_storage_not_configured');
+        return send(res, 201, await evidenceTransferService.createUploadIntent(actor, id, await json(req) as unknown as CreateEvidenceUploadIntentInput));
+      }
       if (parts[3] === 'evidence' && parts.length === 4) {
         if (req.method === 'GET') return send(res, 200, await evidenceService.list(actor, id));
         if (req.method === 'POST') return send(res, 201, await evidenceService.register(actor, id, await json(req) as unknown as RegisterEvidenceInput));
@@ -235,7 +254,8 @@ const server = createServer(async (req, res) => {
     const message = error instanceof Error ? error.message : 'unknown_error';
     const status = message === 'unauthorized' || message.startsWith('invalid_token') || message === 'token_expired' ? 401
       : message.includes('not_permitted') || message.includes('access_denied') ? 403
-      : message === 'estimate_not_found' || message === 'supplement_not_found' || message === 'damage_graph_not_found' ? 404
+      : message === 'estimate_not_found' || message === 'supplement_not_found' || message === 'damage_graph_not_found' || message === 'evidence_not_found' ? 404
+      : message === 'blob_storage_not_configured' ? 503
       : message === 'request_too_large' ? 413
       : 400;
     return send(res, status, { error: message });
