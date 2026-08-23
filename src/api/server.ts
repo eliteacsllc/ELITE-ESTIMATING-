@@ -7,6 +7,7 @@ import { NoopAuditSink, PostgresAuditSink } from '../audit/audit.js';
 import { verifyHs256Token } from '../security/token.js';
 import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
+import { appCss, appJs, indexHtml } from '../web/assets.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
@@ -15,17 +16,33 @@ const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAud
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
 const service = new EstimatingService(repository, [], auditSink);
 
-function send(res: ServerResponse, status: number, body: unknown): void {
-  const payload = JSON.stringify(body);
-  res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'content-length': Buffer.byteLength(payload),
+function baseHeaders(): Record<string, string> {
+  return {
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
     'x-frame-options': 'DENY',
     'referrer-policy': 'no-referrer',
-    'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
     'strict-transport-security': 'max-age=31536000; includeSubDomains',
+  };
+}
+
+function send(res: ServerResponse, status: number, body: unknown): void {
+  const payload = JSON.stringify(body);
+  res.writeHead(status, {
+    ...baseHeaders(),
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(payload),
+    'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
+  });
+  res.end(payload);
+}
+
+function sendText(res: ServerResponse, status: number, contentType: string, payload: string, csp?: string): void {
+  res.writeHead(status, {
+    ...baseHeaders(),
+    'content-type': contentType,
+    'content-length': Buffer.byteLength(payload),
+    ...(csp ? { 'content-security-policy': csp } : {}),
   });
   res.end(payload);
 }
@@ -64,6 +81,11 @@ async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; d
 
 const server = createServer(async (req, res) => {
   try {
+    if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
+      return sendText(res, 200, 'text/html; charset=utf-8', indexHtml, "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    }
+    if (req.method === 'GET' && req.url === '/app.js') return sendText(res, 200, 'text/javascript; charset=utf-8', appJs);
+    if (req.method === 'GET' && req.url === '/app.css') return sendText(res, 200, 'text/css; charset=utf-8', appCss);
     if (req.method === 'GET' && req.url === '/health') return send(res, 200, { status: 'ok', service: 'elite-estimating' });
     if (req.method === 'GET' && req.url === '/ready') {
       const state = await readiness();
