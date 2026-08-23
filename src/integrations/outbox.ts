@@ -27,8 +27,20 @@ export type PendingLifecycleEvent = LifecycleEvent & {
   lastError?: string;
 };
 
+export type LifecycleOutboxHealth = {
+  unpublishedTotal: number;
+  pendingTotal: number;
+  retriedTotal: number;
+  exhaustedTotal: number;
+  oldestPendingSeconds: number;
+};
+
 export interface LifecycleSink {
   emit(event: LifecycleEvent): Promise<void>;
+}
+
+export interface LifecycleOutboxHealthSource {
+  healthSnapshot(maxAttempts?: number): Promise<LifecycleOutboxHealth>;
 }
 
 export function lifecycleEvent(input: Omit<LifecycleEvent, 'id' | 'occurredAt'>): LifecycleEvent {
@@ -39,14 +51,25 @@ export class NoopLifecycleSink implements LifecycleSink {
   async emit(): Promise<void> {}
 }
 
-export class MemoryLifecycleSink implements LifecycleSink {
+export class MemoryLifecycleSink implements LifecycleSink, LifecycleOutboxHealthSource {
   readonly events: LifecycleEvent[] = [];
   async emit(event: LifecycleEvent): Promise<void> {
     if (!this.events.some(row => row.idempotencyKey === event.idempotencyKey)) this.events.push(structuredClone(event));
   }
+  async healthSnapshot(): Promise<LifecycleOutboxHealth> {
+    if (!this.events.length) return { unpublishedTotal: 0, pendingTotal: 0, retriedTotal: 0, exhaustedTotal: 0, oldestPendingSeconds: 0 };
+    const oldest = Math.min(...this.events.map(event => Date.parse(event.occurredAt)));
+    return {
+      unpublishedTotal: this.events.length,
+      pendingTotal: this.events.length,
+      retriedTotal: 0,
+      exhaustedTotal: 0,
+      oldestPendingSeconds: Math.max(0, (Date.now() - oldest) / 1000),
+    };
+  }
 }
 
-export class PostgresLifecycleOutbox implements LifecycleSink {
+export class PostgresLifecycleOutbox implements LifecycleSink, LifecycleOutboxHealthSource {
   private readonly pool: Pool;
   constructor(connectionString: string) {
     this.pool = new Pool({ connectionString, max: 4, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 });
@@ -85,6 +108,28 @@ export class PostgresLifecycleOutbox implements LifecycleSink {
       attempts: Number(row.attempts),
       ...(row.last_error ? { lastError: String(row.last_error) } : {}),
     }));
+  }
+
+  async healthSnapshot(maxAttempts = 10): Promise<LifecycleOutboxHealth> {
+    const safeAttempts = Math.max(1, Math.min(Math.trunc(maxAttempts), 100));
+    const result = await this.pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE published_at IS NULL)::int AS unpublished_total,
+         COUNT(*) FILTER (WHERE published_at IS NULL AND attempts < $1)::int AS pending_total,
+         COUNT(*) FILTER (WHERE published_at IS NULL AND attempts > 0 AND attempts < $1)::int AS retried_total,
+         COUNT(*) FILTER (WHERE published_at IS NULL AND attempts >= $1)::int AS exhausted_total,
+         COALESCE(EXTRACT(EPOCH FROM (NOW() - MIN(occurred_at) FILTER (WHERE published_at IS NULL AND attempts < $1))), 0)::double precision AS oldest_pending_seconds
+       FROM integration_outbox`,
+      [safeAttempts],
+    );
+    const row = result.rows[0] ?? {};
+    return {
+      unpublishedTotal: Number(row.unpublished_total ?? 0),
+      pendingTotal: Number(row.pending_total ?? 0),
+      retriedTotal: Number(row.retried_total ?? 0),
+      exhaustedTotal: Number(row.exhausted_total ?? 0),
+      oldestPendingSeconds: Math.max(0, Number(row.oldest_pending_seconds ?? 0)),
+    };
   }
 
   async markPublished(id: string): Promise<void> {
