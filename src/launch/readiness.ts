@@ -10,9 +10,24 @@ export type LaunchManifest = {
 export type LaunchFinding = { gate: string; severity: 'blocker' | 'warning'; message: string };
 export type LaunchReadiness = { green: boolean; market: string | null; findings: LaunchFinding[] };
 
+const placeholderPatterns = [/^replace[-_ ]?with/i, /^replace_with/i, /^changeme$/i, /^todo$/i, /^placeholder$/i];
 function configured(value: string | undefined): boolean { return Boolean(value?.trim()); }
+function productionValue(value: string | undefined): boolean {
+  const normalized = value?.trim();
+  return Boolean(normalized) && !placeholderPatterns.some(pattern => pattern.test(normalized!));
+}
 function enabled(value: string | undefined): boolean { return value === '1'; }
 function positiveInteger(value: number): boolean { return Number.isSafeInteger(value) && value > 0; }
+function positiveNumberString(value: string | undefined): boolean { const n = Number(value); return productionValue(value) && Number.isFinite(n) && n > 0; }
+function nonNegativeIntegerString(value: string | undefined): boolean { const n = Number(value); return productionValue(value) && Number.isSafeInteger(n) && n >= 0; }
+function httpsUrl(value: string | undefined): boolean {
+  if (!productionValue(value)) return false;
+  try { const parsed = new URL(value!); return parsed.protocol === 'https:' && Boolean(parsed.hostname); } catch { return false; }
+}
+function postgresUrl(value: string | undefined): boolean {
+  if (!productionValue(value)) return false;
+  try { const parsed = new URL(value!); return (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') && Boolean(parsed.hostname); } catch { return false; }
+}
 function stringArray(value: unknown): value is string[] { return Array.isArray(value) && value.every(item => typeof item === 'string' && item.trim().length > 0); }
 function object(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
 
@@ -33,21 +48,21 @@ export function evaluateLaunchReadiness(manifest: LaunchManifest, env: NodeJS.Pr
   const warn = (gate: string, message: string) => findings.push({ gate, severity: 'warning' as const, message });
   if (!manifest.market.trim()) block('market', 'market is required');
   if (manifest.assetClasses.length === 0) block('product', 'at least one validated asset class is required');
-  if (!configured(env.DATABASE_URL)) block('persistence', 'DATABASE_URL is required');
+  if (!postgresUrl(env.DATABASE_URL)) block('persistence', 'DATABASE_URL must be a non-placeholder PostgreSQL URL');
   if (enabled(env.ELITE_ALLOW_EPHEMERAL)) block('persistence', 'ephemeral storage must be disabled');
-  const oidcConfigured = configured(env.ELITE_OIDC_ISSUER) && configured(env.ELITE_OIDC_AUDIENCE) && configured(env.ELITE_OIDC_JWKS_URL);
-  const serviceTokenConfigured = (env.ELITE_AUTH_SECRET?.length ?? 0) >= 32;
-  if (!oidcConfigured && !serviceTokenConfigured) block('authentication', 'OIDC/JWKS or a strong service-token secret is required');
+  const oidcConfigured = httpsUrl(env.ELITE_OIDC_ISSUER) && productionValue(env.ELITE_OIDC_AUDIENCE) && httpsUrl(env.ELITE_OIDC_JWKS_URL);
+  const serviceTokenConfigured = productionValue(env.ELITE_AUTH_SECRET) && (env.ELITE_AUTH_SECRET?.length ?? 0) >= 32;
+  if (!oidcConfigured && !serviceTokenConfigured) block('authentication', 'OIDC/JWKS or a strong non-placeholder service-token secret is required');
   if (!oidcConfigured) warn('authentication', 'enterprise OIDC/JWKS is not configured');
   if (!enabled(env.ELITE_REQUIRE_IDEMPOTENCY)) block('mutation_safety', 'ELITE_REQUIRE_IDEMPOTENCY must be enabled');
   if (!enabled(env.ELITE_REQUIRE_RATE_LIMIT)) block('abuse_control', 'ELITE_REQUIRE_RATE_LIMIT must be enabled');
-  if (!configured(env.ELITE_RATE_LIMIT_CAPACITY) || !configured(env.ELITE_RATE_LIMIT_REFILL_PER_SECOND)) block('abuse_control', 'rate-limit capacity and refill must be configured');
-  if (!configured(env.ELITE_METRICS_TOKEN) || (env.ELITE_METRICS_TOKEN?.length ?? 0) < 32) block('observability', 'protected metrics must be configured');
+  if (!positiveNumberString(env.ELITE_RATE_LIMIT_CAPACITY) || !positiveNumberString(env.ELITE_RATE_LIMIT_REFILL_PER_SECOND)) block('abuse_control', 'rate-limit capacity and refill must be positive numeric values');
+  if (!productionValue(env.ELITE_METRICS_TOKEN) || (env.ELITE_METRICS_TOKEN?.length ?? 0) < 32) block('observability', 'protected metrics must use a strong non-placeholder token');
   if (!enabled(env.ELITE_REQUIRE_BLOB_STORAGE)) block('evidence_storage', 'ELITE_REQUIRE_BLOB_STORAGE must be enabled');
-  for (const name of ['R2_ACCOUNT_ID','R2_BUCKET','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY'] as const) if (!configured(env[name])) block('evidence_storage', `${name} is required`);
-  if (!configured(env.ELITE_CLAIMS_WEBHOOK_URL) || !configured(env.ELITE_CLAIMS_WEBHOOK_SECRET)) block('claims_integration', 'Claims Management webhook URL and secret are required');
-  if ((env.ELITE_CLAIMS_WEBHOOK_SECRET?.length ?? 0) < 32) block('claims_integration', 'Claims Management webhook secret must be at least 32 characters');
-  if (!configured(env.ELITE_OUTBOX_MAX_PENDING) || !configured(env.ELITE_OUTBOX_MAX_AGE_SECONDS) || !configured(env.ELITE_OUTBOX_MAX_EXHAUSTED)) block('claims_integration', 'production outbox health thresholds must be configured');
+  for (const name of ['R2_ACCOUNT_ID','R2_BUCKET','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY'] as const) if (!productionValue(env[name])) block('evidence_storage', `${name} must be configured with a non-placeholder value`);
+  if (!httpsUrl(env.ELITE_CLAIMS_WEBHOOK_URL)) block('claims_integration', 'Claims Management webhook must be a non-placeholder HTTPS URL');
+  if (!productionValue(env.ELITE_CLAIMS_WEBHOOK_SECRET) || (env.ELITE_CLAIMS_WEBHOOK_SECRET?.length ?? 0) < 32) block('claims_integration', 'Claims Management webhook secret must be a strong non-placeholder value');
+  if (!nonNegativeIntegerString(env.ELITE_OUTBOX_MAX_PENDING) || !nonNegativeIntegerString(env.ELITE_OUTBOX_MAX_AGE_SECONDS) || !nonNegativeIntegerString(env.ELITE_OUTBOX_MAX_EXHAUSTED)) block('claims_integration', 'production outbox health thresholds must be non-negative integers');
   if (manifest.dataRights.length === 0) block('data_rights', 'at least one lawful data-source agreement record is required');
   for (const right of manifest.dataRights) if (!right.provider.trim() || right.capabilities.length === 0 || right.regions.length === 0 || !right.agreementReference.trim() || !right.approved) block('data_rights', `incomplete or unapproved data-rights record for ${right.provider || 'unnamed provider'}`);
   const requiredSafety = new Set(['structural', 'restraint', 'adas', 'ev_hv']);
