@@ -53,6 +53,21 @@ jobs:
         with:
           node-version: 20
 
+      - name: Validate deployment inputs
+        shell: bash
+        env:
+          PRODUCTION_URL: ${{ inputs.production_url }}
+        run: |
+          set -euo pipefail
+          case "$PRODUCTION_URL" in
+            https://*) ;;
+            *) echo 'production_url must use HTTPS' >&2; exit 1 ;;
+          esac
+          node -e "const u=new URL(process.env.PRODUCTION_URL); if(u.username||u.password||u.search||u.hash) process.exit(1); if(u.pathname!=='/'&&u.pathname!=='') process.exit(1);" || {
+            echo 'production_url must be a clean HTTPS origin with no credentials, query, fragment, or path' >&2
+            exit 1
+          }
+
       - name: Validate required GitHub production secrets
         shell: bash
         run: |
