@@ -9,6 +9,8 @@ import type { CarrierRule } from '../rules/carrier.js';
 import { assertNoBlockingFindings, evaluateCarrierRules } from '../rules/carrier.js';
 import type { AuditSink } from '../audit/audit.js';
 import { auditEvent, NoopAuditSink } from '../audit/audit.js';
+import type { LifecycleSink, LifecycleTopic } from '../integrations/outbox.js';
+import { lifecycleEvent, NoopLifecycleSink } from '../integrations/outbox.js';
 
 export type CreateEstimateInput = {
   tenantId: string;
@@ -42,6 +44,7 @@ export class EstimatingService {
     private readonly repository: EstimateRepository,
     private readonly carrierRules: CarrierRule[] = [],
     private readonly audit: AuditSink = new NoopAuditSink(),
+    private readonly lifecycle: LifecycleSink = new NoopLifecycleSink(),
   ) {}
 
   private async record(principal: Principal, action: string, estimate: Estimate, metadata: Record<string, unknown> = {}): Promise<void> {
@@ -52,6 +55,17 @@ export class EstimatingService {
       resourceType: 'estimate',
       resourceId: estimate.id,
       metadata: { revision: estimate.revision, status: estimate.status, ...metadata },
+    }));
+  }
+
+  private async emit(topic: LifecycleTopic, estimate: Estimate, payload: Record<string, unknown> = {}): Promise<void> {
+    await this.lifecycle.emit(lifecycleEvent({
+      tenantId: estimate.tenantId,
+      topic,
+      aggregateType: 'estimate',
+      aggregateId: estimate.id,
+      payload: { estimateId: estimate.id, claimId: estimate.claimId ?? null, revision: estimate.revision, status: estimate.status, ...payload },
+      idempotencyKey: `${topic}:${estimate.tenantId}:${estimate.id}:r${estimate.revision}:${estimate.updatedAt}`,
     }));
   }
 
@@ -84,6 +98,7 @@ export class EstimatingService {
     };
     const saved = await this.repository.create(estimate);
     await this.record(principal, 'estimate.created', saved, saved.claimId ? { claimId: saved.claimId } : {});
+    await this.emit('estimate.created', saved, { assetClass: saved.asset.assetClass });
     return saved;
   }
 
@@ -114,6 +129,7 @@ export class EstimatingService {
     assertValid(lines.flatMap((line) => validateEstimateLineInput(line, current.currency)));
     const saved = await this.repository.save(recalculate({ ...current, lines, status: 'review' }));
     await this.record(principal, 'estimate.lines_replaced', saved, { lineCount: lines.length });
+    await this.emit('estimate.lines_updated', saved, { lineCount: lines.length, totalMinor: saved.total.amountMinor, currency: saved.currency });
     return saved;
   }
 
@@ -127,6 +143,7 @@ export class EstimatingService {
     assertNoBlockingFindings(findings);
     const saved = await this.repository.save({ ...recalculate(current), status: 'approved' });
     await this.record(principal, 'estimate.approved', saved, { carrierFindingCount: findings.length });
+    await this.emit('estimate.approved', saved, { totalMinor: saved.total.amountMinor, currency: saved.currency });
     return saved;
   }
 
@@ -135,6 +152,7 @@ export class EstimatingService {
     const current = await this.get(principal, id);
     const saved = await this.repository.save({ ...current, status: 'void', updatedAt: new Date().toISOString() });
     await this.record(principal, 'estimate.voided', saved);
+    await this.emit('estimate.voided', saved);
     return saved;
   }
 }
