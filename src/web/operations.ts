@@ -56,7 +56,7 @@ export const operationsJs = `(() => {
     if (!estimate) { target.innerHTML = '<div class="emptyState">No estimate loaded.</div>'; return; }
     try {
       const rows = await api('/v1/estimates/'+estimate.id+'/supplements');
-      target.innerHTML = rows.length ? rows.map(s => '<div class="suppItem"><span><b>SUPP '+s.sequence+'</b><small>'+esc(s.status.toUpperCase())+' • base rev '+s.baseRevision+'</small></span><span>'+s.changes.length+' changes</span></div>').join('') : '<div class="emptyState">No supplements yet.</div>';
+      target.innerHTML = rows.length ? rows.map(s => '<div class="suppItem"><span><b>SUPP '+esc(s.id.slice(0,8))+'</b><small>'+esc(s.status.toUpperCase())+' • base rev '+s.baseRevision+'</small></span><span>'+s.changes.length+' changes</span></div>').join('') : '<div class="emptyState">No supplements yet.</div>';
     } catch (e) { target.innerHTML = '<div class="emptyState">'+esc(e.message)+'</div>'; }
   }
 
@@ -82,7 +82,7 @@ export const operationsJs = `(() => {
     if (!estimate) return note('Load an estimate before creating a supplement.', true);
     try {
       const created = await api('/v1/estimates/'+estimate.id+'/supplements',{method:'POST',body:'{}'});
-      note('Supplement '+created.sequence+' created from estimate revision '+created.baseRevision+'.');
+      note('Supplement '+created.id.slice(0,8)+' created from estimate revision '+created.baseRevision+'.');
       await loadSupplements();
     } catch (e) { note(e.message, true); }
   };
