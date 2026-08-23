@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "elite-estimating",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "containers": [
+    {
+      "class_name": "EliteEstimatingContainer",
+      "image": "../../Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 2
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ELITE_ESTIMATING",
+        "class_name": "EliteEstimatingContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["EliteEstimatingContainer"]
+    }
+  ],
+  "vars": {
+    "PORT": "8787",
+    "ELITE_ALLOW_EPHEMERAL": "0",
+    "ELITE_REQUIRE_IDEMPOTENCY": "1",
+    "ELITE_REQUIRE_RATE_LIMIT": "1",
+    "ELITE_REQUIRE_BLOB_STORAGE": "1"
+  }
+}
