@@ -159,3 +159,8 @@ jobs:
           echo 'Production readiness verification failed.' >&2
           cat /tmp/elite-ready.json 2>/dev/null || true
           exit 1
+
+      - name: Run authenticated public deployment smoke
+        env:
+          ELITE_SMOKE_BASE_URL: ${{ inputs.production_url }}
+        run: npm run smoke:remote
