@@ -1,6 +1,6 @@
 {
   "name": "elite-estimating",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
     "start": "node dist/api/server.js",
     "migrate": "node dist/persistence/migrate.js",
     "smoke:http": "node dist/api/http-smoke.js",
+    "smoke:remote": "node dist/api/remote-smoke.js",
     "smoke:postgres:transactions": "node dist/persistence/postgres-transaction-smoke.js",
     "smoke:postgres:schema": "node dist/persistence/schema-smoke.js",
     "smoke:postgres:rate-limit": "node dist/security/postgres-rate-limit-smoke.js",
