@@ -21,7 +21,7 @@ const manifest: LaunchManifest = {
 };
 
 const env: NodeJS.ProcessEnv = {
-  DATABASE_URL: 'postgresql://db', ELITE_AUTH_SECRET: '12345678901234567890123456789012',
+  DATABASE_URL: 'postgresql://db.example.test/elite?sslmode=verify-full', ELITE_AUTH_SECRET: '12345678901234567890123456789012',
   ELITE_REQUIRE_IDEMPOTENCY: '1', ELITE_REQUIRE_RATE_LIMIT: '1', ELITE_RATE_LIMIT_CAPACITY: '100', ELITE_RATE_LIMIT_REFILL_PER_SECOND: '10',
   ELITE_METRICS_TOKEN: '12345678901234567890123456789012', ELITE_REQUIRE_BLOB_STORAGE: '1',
   R2_ACCOUNT_ID: 'acct', R2_BUCKET: 'bucket', R2_ACCESS_KEY_ID: 'key', R2_SECRET_ACCESS_KEY: 'secret',
@@ -34,6 +34,17 @@ test('synthetic fully evidenced configuration can become green', () => {
   assert.equal(result.green, true);
   assert.deepEqual(result.findings.filter(f => f.severity === 'blocker'), []);
   assert.ok(result.findings.some(f => f.gate === 'authentication' && f.severity === 'warning'));
+});
+
+test('remote PostgreSQL without TLS blocks launch', () => {
+  const result = evaluateLaunchReadiness(manifest, { ...env, DATABASE_URL: 'postgresql://db.example.test/elite' });
+  assert.equal(result.green, false);
+  assert.ok(result.findings.some(f => f.gate === 'persistence' && f.message.includes('TLS')));
+});
+
+test('localhost PostgreSQL remains valid for controlled local verification', () => {
+  const result = evaluateLaunchReadiness(manifest, { ...env, DATABASE_URL: 'postgresql://127.0.0.1:5432/elite' });
+  assert.equal(result.green, true);
 });
 
 test('missing ADAS evidence blocks launch', () => {
