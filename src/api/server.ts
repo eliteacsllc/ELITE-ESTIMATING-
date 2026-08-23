@@ -1,11 +1,16 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EstimatingService } from '../application/estimating-service.js';
 import { InMemoryEstimateRepository } from '../persistence/memory.js';
+import { PostgresEstimateRepository } from '../persistence/postgres.js';
+import type { EstimateRepository } from '../persistence/repository.js';
 import { verifyHs256Token } from '../security/token.js';
 import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
 
-const repository = new InMemoryEstimateRepository();
+const databaseUrl = process.env.DATABASE_URL;
+const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
+const postgresRepository = databaseUrl ? new PostgresEstimateRepository(databaseUrl) : null;
+const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
 const service = new EstimatingService(repository);
 
 function send(res: ServerResponse, status: number, body: unknown): void {
@@ -17,6 +22,8 @@ function send(res: ServerResponse, status: number, body: unknown): void {
     'x-content-type-options': 'nosniff',
     'x-frame-options': 'DENY',
     'referrer-policy': 'no-referrer',
+    'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
+    'strict-transport-security': 'max-age=31536000; includeSubDomains',
   });
   res.end(payload);
 }
@@ -46,12 +53,19 @@ function pathParts(url = '/'): string[] {
   return new URL(url, 'http://localhost').pathname.split('/').filter(Boolean);
 }
 
+async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; durableStorage: boolean; databaseHealthy: boolean }> {
+  const authConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
+  const durableStorage = Boolean(postgresRepository);
+  const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
+  return { ready: authConfigured && databaseHealthy && (durableStorage || allowEphemeral), authConfigured, durableStorage, databaseHealthy };
+}
+
 const server = createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && req.url === '/health') return send(res, 200, { status: 'ok', service: 'elite-estimating' });
     if (req.method === 'GET' && req.url === '/ready') {
-      const configured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
-      return send(res, configured ? 200 : 503, { status: configured ? 'ready' : 'not_ready', authConfigured: configured });
+      const state = await readiness();
+      return send(res, state.ready ? 200 : 503, { status: state.ready ? 'ready' : 'not_ready', ...state });
     }
 
     const actor = principal(req);
@@ -59,6 +73,7 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'POST' && parts.join('/') === 'v1/estimates') {
       const body = await json(req);
+      if (!body.asset || typeof body.asset !== 'object') throw new Error('asset_required');
       const estimate = await service.create(actor, {
         tenantId: actor.tenantId,
         claimId: typeof body.claimId === 'string' ? body.claimId : undefined,
@@ -98,3 +113,10 @@ const port = Number(process.env.PORT ?? 8787);
 server.listen(port, '0.0.0.0', () => {
   console.log(`elite-estimating listening on ${port}`);
 });
+
+const shutdown = async () => {
+  server.close();
+  if (postgresRepository) await postgresRepository.close();
+};
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
