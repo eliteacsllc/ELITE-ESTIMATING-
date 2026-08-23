@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AssetIdentity, Estimate, EstimateLine, Money } from '../domain/types.js';
+import { nextUpdatedAt } from '../domain/versioning.js';
 import { auditEstimateLines, lineTotal } from '../engine/estimate.js';
 import { assertValid, validateAssetIdentity, validateCurrency, validateEstimateLineInput, validateJurisdiction } from '../domain/validation.js';
 import type { EstimateRepository } from '../persistence/repository.js';
@@ -36,7 +37,7 @@ function recalculate(estimate: Estimate): Estimate {
     subtotal: money(subtotalMinor, estimate.currency),
     tax: money(taxMinor, estimate.currency),
     total: money(subtotalMinor + taxMinor, estimate.currency),
-    updatedAt: new Date().toISOString(),
+    updatedAt: nextUpdatedAt(estimate.updatedAt),
   };
 }
 
@@ -152,7 +153,7 @@ export class EstimatingService {
   async void(principal: Principal, id: string): Promise<Estimate> {
     authorize(principal, 'estimate:void', principal.tenantId);
     const current = await this.get(principal, id);
-    const saved = await this.repository.save({ ...current, status: 'void', updatedAt: new Date().toISOString() }, current.updatedAt);
+    const saved = await this.repository.save({ ...current, status: 'void', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
     await this.record(principal, 'estimate.voided', saved);
     await this.emit('estimate.voided', saved);
     return saved;
