@@ -86,7 +86,7 @@ export class InMemoryIdempotencyRepository implements IdempotencyRepository {
     const key = this.key(tenantId, operation, idempotencyKey);
     const existing = this.rows.get(key);
     if (!existing) throw new Error('idempotency_receipt_not_found');
-    this.rows.set(key, { ...existing, completedAt: new Date().toISOString() });
+    this.rows.set(key, { ...existing, completedAt: existing.completedAt ?? new Date().toISOString() });
   }
   async health(): Promise<boolean> { return true; }
 }
@@ -105,15 +105,21 @@ export class PostgresIdempotencyRepository implements IdempotencyRepository {
   }
   async claim(input: ClaimIdempotencyInput): Promise<{ receipt: IdempotencyReceipt; created: boolean }> {
     const receipt = buildReceipt(input);
-    const inserted = await this.pool.query(
+    const claimed = await this.pool.query(
       `INSERT INTO mutation_idempotency_receipts
        (tenant_id,operation,idempotency_key,request_hash,resource_id,created_at,expires_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (tenant_id,operation,idempotency_key) DO NOTHING
+       ON CONFLICT (tenant_id,operation,idempotency_key)
+       DO UPDATE SET request_hash=EXCLUDED.request_hash, resource_id=EXCLUDED.resource_id,
+                     completed_at=NULL, created_at=EXCLUDED.created_at, expires_at=EXCLUDED.expires_at
+       WHERE mutation_idempotency_receipts.expires_at <= NOW()
        RETURNING tenant_id,operation,idempotency_key,request_hash,resource_id,created_at,expires_at,completed_at`,
       [receipt.tenantId, receipt.operation, receipt.idempotencyKey, receipt.requestHash, receipt.resourceId, receipt.createdAt, receipt.expiresAt],
     );
-    if (inserted.rowCount) return { receipt: this.mapRow(inserted.rows[0] as Record<string, unknown>), created: true };
+    if (claimed.rowCount) {
+      const row = this.mapRow(claimed.rows[0] as Record<string, unknown>);
+      return { receipt: row, created: row.createdAt === receipt.createdAt };
+    }
     const existing = await this.pool.query(
       `SELECT tenant_id,operation,idempotency_key,request_hash,resource_id,created_at,expires_at,completed_at
        FROM mutation_idempotency_receipts WHERE tenant_id=$1 AND operation=$2 AND idempotency_key=$3 LIMIT 1`,
