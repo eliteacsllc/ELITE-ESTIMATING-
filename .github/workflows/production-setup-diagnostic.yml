@@ -1,0 +1,109 @@
+name: Diagnose Elite Estimating Production Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      production_url:
+        description: Optional public HTTPS production origin to validate
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ELITE_AUTH_SECRET: ${{ secrets.ELITE_AUTH_SECRET }}
+      ELITE_METRICS_TOKEN: ${{ secrets.ELITE_METRICS_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      ELITE_CLAIMS_WEBHOOK_URL: ${{ secrets.ELITE_CLAIMS_WEBHOOK_URL }}
+      ELITE_CLAIMS_WEBHOOK_SECRET: ${{ secrets.ELITE_CLAIMS_WEBHOOK_SECRET }}
+      ELITE_LAUNCH_MANIFEST_JSON: ${{ secrets.ELITE_LAUNCH_MANIFEST_JSON }}
+      PRODUCTION_URL: ${{ inputs.production_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Report production environment secret inventory
+        id: inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID DATABASE_URL ELITE_AUTH_SECRET
+            ELITE_METRICS_TOKEN R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
+            ELITE_CLAIMS_WEBHOOK_URL ELITE_CLAIMS_WEBHOOK_SECRET ELITE_LAUNCH_MANIFEST_JSON
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          echo '### Elite Estimating production setup diagnostic' >> "$GITHUB_STEP_SUMMARY"
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo '- Required environment secrets: ✅ all present' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '- Required environment secrets: ❌ missing' >> "$GITHUB_STEP_SUMMARY"
+            for name in "${missing[@]}"; do echo "  - \`$name\`" >> "$GITHUB_STEP_SUMMARY"; done
+          fi
+          printf 'missing_count=%s\n' "${#missing[@]}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate optional production origin
+        if: ${{ inputs.production_url != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$PRODUCTION_URL" in
+            https://*) ;;
+            *) echo 'production_url must use HTTPS' >&2; exit 1 ;;
+          esac
+          node -e "const u=new URL(process.env.PRODUCTION_URL); if(u.username||u.password||u.search||u.hash) process.exit(1); if(u.pathname!=='/'&&u.pathname!=='') process.exit(1);"
+          echo '- Production origin format: ✅ valid clean HTTPS origin' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install launch checker
+        if: ${{ steps.inventory.outputs.missing_count == '0' }}
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Validate production configuration and launch evidence
+        if: ${{ steps.inventory.outputs.missing_count == '0' }}
+        shell: bash
+        env:
+          ELITE_REQUIRE_IDEMPOTENCY: '1'
+          ELITE_REQUIRE_RATE_LIMIT: '1'
+          ELITE_RATE_LIMIT_CAPACITY: '120'
+          ELITE_RATE_LIMIT_REFILL_PER_SECOND: '2'
+          ELITE_REQUIRE_BLOB_STORAGE: '1'
+          ELITE_OUTBOX_MAX_PENDING: '1000'
+          ELITE_OUTBOX_MAX_AGE_SECONDS: '300'
+          ELITE_OUTBOX_MAX_EXHAUSTED: '0'
+        run: |
+          set -euo pipefail
+          npm run build
+          printf '%s' "$ELITE_LAUNCH_MANIFEST_JSON" > /tmp/elite-launch-manifest.json
+          if npm run launch:check -- /tmp/elite-launch-manifest.json; then
+            echo '- Launch certification: ✅ GREEN' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '- Launch certification: ❌ RED — inspect blockers above' >> "$GITHUB_STEP_SUMMARY"
+            rm -f /tmp/elite-launch-manifest.json
+            exit 1
+          fi
+          rm -f /tmp/elite-launch-manifest.json
+
+      - name: Fail when environment secrets are incomplete
+        if: ${{ steps.inventory.outputs.missing_count != '0' }}
+        run: |
+          echo 'Production environment setup is incomplete. Add the missing Environment secrets shown in the job summary.' >&2
+          exit 1
