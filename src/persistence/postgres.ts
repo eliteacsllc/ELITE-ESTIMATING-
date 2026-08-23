@@ -40,19 +40,23 @@ export class PostgresEstimateRepository implements EstimateRepository {
     return result.rowCount ? (result.rows[0]!.payload as Estimate) : null;
   }
 
-  async save(estimate: Estimate): Promise<Estimate> {
+  async save(estimate: Estimate, expectedUpdatedAt?: string): Promise<Estimate> {
     const result = await this.pool.query(
       `UPDATE estimates SET
         claim_id=$3, revision=$4, status=$5, asset_class=$6, jurisdiction=$7, currency=$8,
         payload=$9::jsonb, updated_at=$10
-       WHERE tenant_id=$1 AND id=$2`,
+       WHERE tenant_id=$1 AND id=$2
+         AND ($11::timestamptz IS NULL OR updated_at=$11::timestamptz)`,
       [
         estimate.tenantId, estimate.id, estimate.claimId ?? null, estimate.revision, estimate.status,
         estimate.asset.assetClass, estimate.jurisdiction, estimate.currency, JSON.stringify(estimate), estimate.updatedAt,
+        expectedUpdatedAt ?? null,
       ],
     );
-    if (result.rowCount !== 1) throw new Error('estimate_not_found');
-    return structuredClone(estimate);
+    if (result.rowCount === 1) return structuredClone(estimate);
+    const exists = await this.pool.query('SELECT 1 FROM estimates WHERE tenant_id=$1 AND id=$2 LIMIT 1', [estimate.tenantId, estimate.id]);
+    if (!exists.rowCount) throw new Error('estimate_not_found');
+    throw new Error('estimate_concurrent_modification');
   }
 
   async listByClaim(tenantId: string, claimId: string): Promise<Estimate[]> {
