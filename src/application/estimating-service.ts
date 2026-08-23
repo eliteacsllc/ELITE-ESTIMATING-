@@ -6,6 +6,8 @@ import type { Principal } from '../security/rbac.js';
 import { authorize } from '../security/rbac.js';
 import type { CarrierRule } from '../rules/carrier.js';
 import { assertNoBlockingFindings, evaluateCarrierRules } from '../rules/carrier.js';
+import type { AuditSink } from '../audit/audit.js';
+import { auditEvent, NoopAuditSink } from '../audit/audit.js';
 
 export type CreateEstimateInput = {
   tenantId: string;
@@ -38,7 +40,19 @@ export class EstimatingService {
   constructor(
     private readonly repository: EstimateRepository,
     private readonly carrierRules: CarrierRule[] = [],
+    private readonly audit: AuditSink = new NoopAuditSink(),
   ) {}
+
+  private async record(principal: Principal, action: string, estimate: Estimate, metadata: Record<string, unknown> = {}): Promise<void> {
+    await this.audit.record(auditEvent({
+      tenantId: estimate.tenantId,
+      actorId: principal.userId,
+      action,
+      resourceType: 'estimate',
+      resourceId: estimate.id,
+      metadata: { revision: estimate.revision, status: estimate.status, ...metadata },
+    }));
+  }
 
   async create(principal: Principal, input: CreateEstimateInput): Promise<Estimate> {
     authorize(principal, 'estimate:create', input.tenantId);
@@ -60,7 +74,9 @@ export class EstimatingService {
       createdAt: now,
       updatedAt: now,
     };
-    return this.repository.create(estimate);
+    const saved = await this.repository.create(estimate);
+    await this.record(principal, 'estimate.created', saved, { claimId: saved.claimId });
+    return saved;
   }
 
   async get(principal: Principal, id: string): Promise<Estimate> {
@@ -76,7 +92,9 @@ export class EstimatingService {
     if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
     const currencyMismatch = lines.some((line) => line.total.currency !== current.currency);
     if (currencyMismatch) throw new Error('estimate_currency_mismatch');
-    return this.repository.save(recalculate({ ...current, lines, status: 'review' }));
+    const saved = await this.repository.save(recalculate({ ...current, lines, status: 'review' }));
+    await this.record(principal, 'estimate.lines_replaced', saved, { lineCount: lines.length });
+    return saved;
   }
 
   async approve(principal: Principal, id: string): Promise<Estimate> {
@@ -87,12 +105,16 @@ export class EstimatingService {
     if (current.lines.some((line) => !line.humanApproved)) throw new Error('human_approval_required');
     const findings = evaluateCarrierRules(current, this.carrierRules);
     assertNoBlockingFindings(findings);
-    return this.repository.save({ ...recalculate(current), status: 'approved' });
+    const saved = await this.repository.save({ ...recalculate(current), status: 'approved' });
+    await this.record(principal, 'estimate.approved', saved, { carrierFindingCount: findings.length });
+    return saved;
   }
 
   async void(principal: Principal, id: string): Promise<Estimate> {
     authorize(principal, 'estimate:void', principal.tenantId);
     const current = await this.get(principal, id);
-    return this.repository.save({ ...current, status: 'void', updatedAt: new Date().toISOString() });
+    const saved = await this.repository.save({ ...current, status: 'void', updatedAt: new Date().toISOString() });
+    await this.record(principal, 'estimate.voided', saved);
+    return saved;
   }
 }
