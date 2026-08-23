@@ -8,16 +8,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: elite-estimating-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - run: npm install --ignore-scripts --no-audit --no-fund
-      - run: npm run typecheck
-      - run: npm run build
-      - run: npm test
+      - run: npm run verify
+      - run: npm audit --omit=dev --audit-level=high
