@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFile } from 'node:fs/promises';
 import { assertLaunchManifest, evaluateLaunchReadiness, type LaunchManifest } from './readiness.js';
 
 const manifest: LaunchManifest = {
@@ -51,4 +52,15 @@ test('missing production controls blocks launch', () => {
 
 test('malformed manifest is rejected before evaluation', () => {
   assert.throws(() => assertLaunchManifest({ version: 1, market: 'US', assetClasses: 'auto' }), /invalid_launch_manifest_product/);
+});
+
+test('shipped example manifest cannot certify production', async () => {
+  const value: unknown = JSON.parse(await readFile('launch/launch-manifest.example.json', 'utf8'));
+  assertLaunchManifest(value);
+  const result = evaluateLaunchReadiness(value, env);
+  assert.equal(result.green, false);
+  assert.ok(result.findings.some(f => f.gate === 'data_rights'));
+  assert.ok(result.findings.some(f => f.gate === 'safety'));
+  assert.ok(result.findings.some(f => f.gate === 'privacy'));
+  assert.ok(result.findings.some(f => f.gate === 'pilot'));
 });
