@@ -61,7 +61,7 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test "${#ELITE_AUTH_SECRET}" -ge 32
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.git_ref }}
           fetch-depth: 0
