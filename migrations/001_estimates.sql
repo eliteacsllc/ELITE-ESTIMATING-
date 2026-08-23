@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS estimates (
   tenant_id TEXT NOT NULL,
   id UUID NOT NULL,
@@ -24,5 +22,3 @@ CREATE INDEX IF NOT EXISTS estimates_tenant_status_idx
 
 CREATE INDEX IF NOT EXISTS estimates_payload_gin_idx
   ON estimates USING GIN (payload jsonb_path_ops);
-
-COMMIT;
