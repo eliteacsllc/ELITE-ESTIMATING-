@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       git_ref:
-        description: Known-good commit SHA or tag to restore
+        description: Known-good 40-character commit SHA to restore
         required: true
         type: string
       production_url:
@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       database_compatibility:
-        description: Type DB-COMPATIBLE after confirming the target ref supports the current production schema
+        description: Type DB-COMPATIBLE after confirming the target commit supports the current production schema
         required: true
         type: string
       confirmation:
@@ -36,8 +36,29 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TARGET_SHA: ${{ inputs.git_ref }}
+      PRODUCTION_URL: ${{ inputs.production_url }}
 
     steps:
+      - name: Validate rollback inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-fA-F]{40}$'; then
+            echo 'git_ref must be an immutable 40-character commit SHA' >&2
+            exit 1
+          fi
+          case "$PRODUCTION_URL" in
+            https://*) ;;
+            *) echo 'production_url must use HTTPS' >&2; exit 1 ;;
+          esac
+          node -e "const u=new URL(process.env.PRODUCTION_URL); if(u.username||u.password||u.search||u.hash) process.exit(1); if(u.pathname!=='/'&&u.pathname!=='') process.exit(1);" || {
+            echo 'production_url must be a clean HTTPS origin with no credentials, query, fragment, or path' >&2
+            exit 1
+          }
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.git_ref }}
@@ -51,7 +72,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Restoring source revision: $(git rev-parse HEAD)"
+          actual=$(git rev-parse HEAD)
+          expected=$(printf '%s' "$TARGET_SHA" | tr '[:upper:]' '[:lower:]')
+          test "$actual" = "$expected"
+          echo "Restoring immutable source revision: $actual"
           test -f Dockerfile
           test -f deploy/cloudflare/wrangler.jsonc
           test -f deploy/cloudflare/src/index.ts
@@ -77,8 +101,6 @@ jobs:
 
       - name: Verify restored public readiness
         shell: bash
-        env:
-          PRODUCTION_URL: ${{ inputs.production_url }}
         run: |
           set -euo pipefail
           base="${PRODUCTION_URL%/}"
