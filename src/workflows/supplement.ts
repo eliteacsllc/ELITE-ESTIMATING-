@@ -19,10 +19,10 @@ export type Supplement = {
   createdAt: string;
 };
 
-export function createSupplement(estimate: Estimate): Supplement {
+export function createSupplement(estimate: Estimate, id: string = randomUUID()): Supplement {
   if (estimate.status !== 'approved') throw new Error('supplement_requires_approved_estimate');
   return {
-    id: randomUUID(),
+    id,
     estimateId: estimate.id,
     baseRevision: estimate.revision,
     changes: [],
