@@ -1,4 +1,5 @@
 import type { AssetIdentity, EstimateLine, SourceProvenance } from '../domain/types.js';
+import { ProviderCircuitBreaker, resilientCall, type ProviderHealthSnapshot } from '../providers/resilience.js';
 
 export type ProviderCapability =
   | 'asset_identity'
@@ -61,11 +62,28 @@ export interface EstimateInterchangeAdapter {
 }
 
 export class FederatedDataGateway {
-  constructor(private readonly providers: EstimatingDataProvider[]) {}
+  private readonly breakers = new Map<string, ProviderCircuitBreaker>();
+
+  constructor(private readonly providers: EstimatingDataProvider[]) {
+    for (const provider of providers) {
+      const id = provider.descriptor().id;
+      if (this.breakers.has(id)) throw new Error(`duplicate_provider_id:${id}`);
+      this.breakers.set(id, new ProviderCircuitBreaker(id));
+    }
+  }
 
   async query<T>(query: DataQuery): Promise<ProviderRecord<T>[]> {
     const eligible = this.providers.filter((provider) => provider.supports(query));
-    const settled = await Promise.allSettled(eligible.map((provider) => provider.query<T>(query)));
+    const settled = await Promise.allSettled(eligible.map(async (provider) => {
+      const descriptor = provider.descriptor();
+      const breaker = this.breakers.get(descriptor.id);
+      if (!breaker) throw new Error(`provider_breaker_missing:${descriptor.id}`);
+      return resilientCall(breaker, () => provider.query<T>(query));
+    }));
     return settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
+  }
+
+  healthSnapshots(): ProviderHealthSnapshot[] {
+    return [...this.breakers.values()].map((breaker) => breaker.snapshot());
   }
 }
