@@ -101,7 +101,7 @@ export class SupplementService {
     const approved = await this.supplements.save(principal.tenantId, { ...supplement, status: 'approved' });
     const applied = applyApprovedSupplement(estimate, approved);
     assertValid(applied.lines.flatMap((line) => validateEstimateLineInput(line, applied.currency)));
-    const savedEstimate = await this.estimates.save(recalculate(applied));
+    const savedEstimate = await this.estimates.save(recalculate(applied), estimate.updatedAt);
     await this.emit('supplement.approved', principal.tenantId, approved, { resultingRevision: savedEstimate.revision, totalMinor: savedEstimate.total.amountMinor, currency: savedEstimate.currency });
     return { supplement: approved, estimate: savedEstimate };
   }
