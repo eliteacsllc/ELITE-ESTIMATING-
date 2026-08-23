@@ -1,0 +1,1 @@
+Cloudflare Containers checkpoint: two-instance Docker routing adapter, runtime Worker Secret injection, port readiness, current tooling pins, adapter typecheck in release CI.
