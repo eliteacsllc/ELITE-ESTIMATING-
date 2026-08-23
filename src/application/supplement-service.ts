@@ -1,4 +1,5 @@
 import type { Estimate, EstimateLine, Money } from '../domain/types.js';
+import { nextUpdatedAt } from '../domain/versioning.js';
 import { lineTotal } from '../engine/estimate.js';
 import { assertValid, validateEstimateLineInput } from '../domain/validation.js';
 import type { EstimateRepository } from '../persistence/repository.js';
@@ -22,7 +23,7 @@ function recalculate(estimate: Estimate): Estimate {
   const lines = estimate.lines.map((line) => ({ ...line, total: lineTotal(line) }));
   const subtotalMinor = lines.reduce((sum, line) => sum + line.total.amountMinor - (line.tax?.amountMinor ?? 0), 0);
   const taxMinor = lines.reduce((sum, line) => sum + (line.tax?.amountMinor ?? 0), 0);
-  return { ...estimate, lines, subtotal: money(subtotalMinor, estimate.currency), tax: money(taxMinor, estimate.currency), total: money(subtotalMinor + taxMinor, estimate.currency), updatedAt: new Date().toISOString() };
+  return { ...estimate, lines, subtotal: money(subtotalMinor, estimate.currency), tax: money(taxMinor, estimate.currency), total: money(subtotalMinor + taxMinor, estimate.currency), updatedAt: nextUpdatedAt(estimate.updatedAt) };
 }
 
 export class SupplementService {
