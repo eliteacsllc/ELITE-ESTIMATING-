@@ -26,6 +26,19 @@
       "new_sqlite_classes": ["EliteEstimatingContainer"]
     }
   ],
+  "secrets": {
+    "required": [
+      "DATABASE_URL",
+      "ELITE_AUTH_SECRET",
+      "ELITE_METRICS_TOKEN",
+      "R2_ACCOUNT_ID",
+      "R2_BUCKET",
+      "R2_ACCESS_KEY_ID",
+      "R2_SECRET_ACCESS_KEY",
+      "ELITE_CLAIMS_WEBHOOK_URL",
+      "ELITE_CLAIMS_WEBHOOK_SECRET"
+    ]
+  },
   "vars": {
     "PORT": "8787",
     "ELITE_ALLOW_EPHEMERAL": "0",
