@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { EstimatingDataProvider, DataQuery } from './contracts.js';
+import type { EstimatingDataProvider, DataQuery, ProviderRecord } from './contracts.js';
 import { certifyProvider } from './conformance.js';
 
 const sample: DataQuery = {
@@ -9,6 +9,10 @@ const sample: DataQuery = {
   capability: 'oem_procedures',
   jurisdiction: 'US',
 };
+
+function queryResults(records: ProviderRecord<unknown>[]): EstimatingDataProvider['query'] {
+  return async <T = unknown>() => records as ProviderRecord<T>[];
+}
 
 function provider(overrides: Partial<EstimatingDataProvider> = {}): EstimatingDataProvider {
   return {
@@ -22,14 +26,14 @@ function provider(overrides: Partial<EstimatingDataProvider> = {}): EstimatingDa
     }),
     supports: () => true,
     health: async () => ({ ok: true, latencyMs: 12 }),
-    query: async () => ([{
+    query: queryResults([{
       value: { procedureId: 'proc-1' },
       provenance: {
         provider: 'licensed-oem',
         sourceId: 'proc-1',
         retrievedAt: new Date().toISOString(),
         region: 'US',
-        licenseClass: 'licensed' as const,
+        licenseClass: 'licensed',
         confidence: 0.99,
       },
     }]),
@@ -45,9 +49,9 @@ test('valid licensed provider certifies green', async () => {
 
 test('licensed provider cannot label returned data public', async () => {
   const p = provider({
-    query: async () => ([{
+    query: queryResults([{
       value: {},
-      provenance: { provider: 'licensed-oem', retrievedAt: new Date().toISOString(), licenseClass: 'public' as const },
+      provenance: { provider: 'licensed-oem', retrievedAt: new Date().toISOString(), licenseClass: 'public' },
     }]),
   });
   const report = await certifyProvider(p, sample);
@@ -69,9 +73,9 @@ test('provider must support certification sample', async () => {
 
 test('invalid confidence is rejected', async () => {
   const p = provider({
-    query: async () => ([{
+    query: queryResults([{
       value: {},
-      provenance: { provider: 'licensed-oem', retrievedAt: new Date().toISOString(), licenseClass: 'licensed' as const, confidence: 1.2 },
+      provenance: { provider: 'licensed-oem', retrievedAt: new Date().toISOString(), licenseClass: 'licensed', confidence: 1.2 },
     }]),
   });
   const report = await certifyProvider(p, sample);
