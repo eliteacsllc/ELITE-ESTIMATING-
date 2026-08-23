@@ -1,0 +1,97 @@
+name: Roll Back Elite Estimating Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: Known-good commit SHA or tag to restore
+        required: true
+        type: string
+      production_url:
+        description: Public production base URL
+        required: true
+        type: string
+      database_compatibility:
+        description: Type DB-COMPATIBLE after confirming the target ref supports the current production schema
+        required: true
+        type: string
+      confirmation:
+        description: Type ROLLBACK to authorize the production rollback
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elite-estimating-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    if: ${{ inputs.confirmation == 'ROLLBACK' && inputs.database_compatibility == 'DB-COMPATIBLE' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify selected source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Restoring source revision: $(git rev-parse HEAD)"
+          test -f Dockerfile
+          test -f deploy/cloudflare/wrangler.jsonc
+          test -f deploy/cloudflare/src/index.ts
+
+      - name: Re-run application verification at target revision
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run verify
+          npm audit --omit=dev --audit-level=high
+
+      - name: Re-run Cloudflare adapter typecheck
+        working-directory: deploy/cloudflare
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run check
+
+      - name: Build target production container locally
+        run: docker build -t elite-estimating:rollback-candidate .
+
+      - name: Redeploy target Worker and container image
+        working-directory: deploy/cloudflare
+        run: npx wrangler deploy --config wrangler.jsonc --containers-rollout=immediate
+
+      - name: Verify restored public readiness
+        shell: bash
+        env:
+          PRODUCTION_URL: ${{ inputs.production_url }}
+        run: |
+          set -euo pipefail
+          base="${PRODUCTION_URL%/}"
+          for attempt in $(seq 1 30); do
+            code=$(curl --silent --show-error --output /tmp/elite-ready.json --write-out '%{http_code}' "$base/ready" || true)
+            if [ "$code" = '200' ] && grep -q '"status":"ready"' /tmp/elite-ready.json \
+              && grep -q '"rateLimitDurable":true' /tmp/elite-ready.json \
+              && grep -q '"rateLimitHealthy":true' /tmp/elite-ready.json; then
+              cat /tmp/elite-ready.json
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Rollback readiness verification failed.' >&2
+          cat /tmp/elite-ready.json 2>/dev/null || true
+          exit 1
