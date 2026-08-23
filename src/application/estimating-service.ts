@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AssetIdentity, Estimate, EstimateLine, Money } from '../domain/types.js';
 import { auditEstimateLines, lineTotal } from '../engine/estimate.js';
+import { assertValid, validateAssetIdentity, validateCurrency, validateEstimateLineInput, validateJurisdiction } from '../domain/validation.js';
 import type { EstimateRepository } from '../persistence/repository.js';
 import type { Principal } from '../security/rbac.js';
 import { authorize } from '../security/rbac.js';
@@ -56,6 +57,13 @@ export class EstimatingService {
 
   async create(principal: Principal, input: CreateEstimateInput): Promise<Estimate> {
     authorize(principal, 'estimate:create', input.tenantId);
+    const currency = input.currency.toUpperCase();
+    assertValid([
+      ...validateAssetIdentity(input.asset),
+      ...validateCurrency(currency),
+      ...validateJurisdiction(input.jurisdiction),
+    ]);
+    if (input.claimId && input.claimId.length > 120) throw new Error('validation_failed:claim_id_too_long');
     const now = new Date().toISOString();
     const estimate: Estimate = {
       id: randomUUID(),
@@ -63,12 +71,12 @@ export class EstimatingService {
       ...(input.claimId ? { claimId: input.claimId } : {}),
       asset: input.asset,
       locale: input.locale,
-      currency: input.currency.toUpperCase(),
-      jurisdiction: input.jurisdiction,
+      currency,
+      jurisdiction: input.jurisdiction.trim(),
       lines: [],
-      subtotal: money(0, input.currency.toUpperCase()),
-      tax: money(0, input.currency.toUpperCase()),
-      total: money(0, input.currency.toUpperCase()),
+      subtotal: money(0, currency),
+      tax: money(0, currency),
+      total: money(0, currency),
       status: 'draft',
       revision: 1,
       createdAt: now,
@@ -90,8 +98,7 @@ export class EstimatingService {
     authorize(principal, 'estimate:update', principal.tenantId);
     const current = await this.get(principal, id);
     if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
-    const currencyMismatch = lines.some((line) => line.total.currency !== current.currency);
-    if (currencyMismatch) throw new Error('estimate_currency_mismatch');
+    assertValid(lines.flatMap((line) => validateEstimateLineInput(line, current.currency)));
     const saved = await this.repository.save(recalculate({ ...current, lines, status: 'review' }));
     await this.record(principal, 'estimate.lines_replaced', saved, { lineCount: lines.length });
     return saved;
