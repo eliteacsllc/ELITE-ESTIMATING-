@@ -3,6 +3,8 @@ export * from './connectors/contracts.js';
 export * from './agents/registry.js';
 export * from './engine/estimate.js';
 export * from './engine/dependency.js';
+export * from './engine/pricing.js';
+export * from './engine/safety.js';
 export * from './application/estimating-service.js';
 export * from './persistence/repository.js';
 export * from './persistence/memory.js';
