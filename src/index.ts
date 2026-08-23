@@ -2,6 +2,7 @@ export * from './domain/types.js';
 export * from './domain/validation.js';
 export * from './domain/versioning.js';
 export * from './connectors/contracts.js';
+export * from './connectors/conformance.js';
 export * from './agents/registry.js';
 export * from './engine/estimate.js';
 export * from './engine/dependency.js';
