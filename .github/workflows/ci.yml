@@ -72,7 +72,7 @@ jobs:
           test "$PRIMARY_SUPPLEMENTS" = "$RESTORED_SUPPLEMENTS"
           test "$RESTORED_ESTIMATES" -gt 0
           test "$RESTORED_SUPPLEMENTS" -gt 0
-      - name: Smoke production server readiness
+      - name: Smoke production server and HTTP mutation idempotency
         run: |
           node dist/api/server.js > /tmp/elite-estimating.log 2>&1 &
           SERVER_PID=$!
@@ -84,5 +84,6 @@ jobs:
           cat /tmp/ready.json
           grep -q '"status":"ready"' /tmp/ready.json
           curl --fail --silent http://127.0.0.1:8787/health | grep -q '"status":"ok"'
+          npm run smoke:http
       - name: Build production container
         run: docker build -t elite-estimating:ci .
