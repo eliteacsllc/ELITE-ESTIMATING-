@@ -10,6 +10,7 @@ export * from './engine/compare.js';
 export * from './application/estimating-service.js';
 export * from './application/idempotent-estimate-create.js';
 export * from './application/supplement-service.js';
+export * from './application/idempotent-supplement-create.js';
 export * from './persistence/repository.js';
 export * from './persistence/memory.js';
 export * from './persistence/postgres.js';
