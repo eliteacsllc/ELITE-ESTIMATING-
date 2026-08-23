@@ -3,6 +3,7 @@ import { EstimatingService } from '../application/estimating-service.js';
 import { InMemoryEstimateRepository } from '../persistence/memory.js';
 import { PostgresEstimateRepository } from '../persistence/postgres.js';
 import type { EstimateRepository } from '../persistence/repository.js';
+import { NoopAuditSink, PostgresAuditSink } from '../audit/audit.js';
 import { verifyHs256Token } from '../security/token.js';
 import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
@@ -10,8 +11,9 @@ import type { EstimateLine } from '../domain/types.js';
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
 const postgresRepository = databaseUrl ? new PostgresEstimateRepository(databaseUrl) : null;
+const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
-const service = new EstimatingService(repository);
+const service = new EstimatingService(repository, [], auditSink);
 
 function send(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -114,9 +116,13 @@ server.listen(port, '0.0.0.0', () => {
   console.log(`elite-estimating listening on ${port}`);
 });
 
+let closing = false;
 const shutdown = async () => {
+  if (closing) return;
+  closing = true;
   server.close();
   if (postgresRepository) await postgresRepository.close();
+  if (auditSink instanceof PostgresAuditSink) await auditSink.close();
 };
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
