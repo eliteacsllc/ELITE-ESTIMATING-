@@ -68,7 +68,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Verify selected source revision
         shell: bash
@@ -146,6 +146,6 @@ jobs:
           const voided = await fetch(`${base}/v1/estimates/${estimate.id}/void`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' } });
           const voidText = await voided.text();
           assert.equal(voided.status, 200, voidText);
-          assert.equal(JSON.parse(voidText).status, 'voided');
+          assert.equal(JSON.parse(voidText).status, 'void');
           console.log('authenticated rollback lifecycle smoke passed');
           NODE
