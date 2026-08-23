@@ -61,14 +61,18 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test "${#ELITE_AUTH_SECRET}" -ge 32
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.git_ref }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            deploy/cloudflare/package-lock.json
 
       - name: Verify selected source revision
         shell: bash
@@ -79,19 +83,21 @@ jobs:
           test "$actual" = "$expected"
           echo "Restoring immutable source revision: $actual"
           test -f Dockerfile
+          test -f package-lock.json
+          test -f deploy/cloudflare/package-lock.json
           test -f deploy/cloudflare/wrangler.jsonc
           test -f deploy/cloudflare/src/index.ts
 
       - name: Re-run application verification at target revision
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npm run verify
           npm audit --omit=dev --audit-level=high
 
       - name: Re-run Cloudflare adapter typecheck
         working-directory: deploy/cloudflare
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npm run check
 
       - name: Build target production container locally
