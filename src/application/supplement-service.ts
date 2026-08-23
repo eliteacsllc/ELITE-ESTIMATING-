@@ -99,12 +99,26 @@ export class SupplementService {
     const supplement = await this.getSupplement(principal, supplementId);
     if (supplement.status !== 'submitted') throw new Error('supplement_not_submitted');
     const estimate = await this.getEstimate(principal, supplement.estimateId);
-    const approved = await this.supplements.save(principal.tenantId, { ...supplement, status: 'approved' });
-    const applied = applyApprovedSupplement(estimate, approved);
+    const approved: Supplement = { ...supplement, status: 'approved' };
+    const applied = recalculate(applyApprovedSupplement(estimate, approved));
     assertValid(applied.lines.flatMap((line) => validateEstimateLineInput(line, applied.currency)));
-    const savedEstimate = await this.estimates.save(recalculate(applied), estimate.updatedAt);
-    await this.emit('supplement.approved', principal.tenantId, approved, { resultingRevision: savedEstimate.revision, totalMinor: savedEstimate.total.amountMinor, currency: savedEstimate.currency });
-    return { supplement: approved, estimate: savedEstimate };
+
+    let result: { supplement: Supplement; estimate: Estimate };
+    if (this.supplements.approveAndApply) {
+      result = await this.supplements.approveAndApply(principal.tenantId, approved, applied, estimate.updatedAt);
+    } else {
+      const savedSupplement = await this.supplements.save(principal.tenantId, approved);
+      try {
+        const savedEstimate = await this.estimates.save(applied, estimate.updatedAt);
+        result = { supplement: savedSupplement, estimate: savedEstimate };
+      } catch (error) {
+        try { await this.supplements.save(principal.tenantId, supplement); } catch { /* best-effort local/test rollback */ }
+        throw error;
+      }
+    }
+
+    await this.emit('supplement.approved', principal.tenantId, result.supplement, { resultingRevision: result.estimate.revision, totalMinor: result.estimate.total.amountMinor, currency: result.estimate.currency });
+    return result;
   }
 
   async list(principal: Principal, estimateId: string): Promise<Supplement[]> {
