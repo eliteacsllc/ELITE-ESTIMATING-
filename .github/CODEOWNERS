@@ -1,0 +1,16 @@
+# Default ownership
+* @eliteacsllc
+
+# Production and security-critical surfaces
+/.github/ @eliteacsllc
+/deploy/ @eliteacsllc
+/launch/ @eliteacsllc
+/migrations/ @eliteacsllc
+/scripts/ @eliteacsllc
+/src/api/ @eliteacsllc
+/src/audit/ @eliteacsllc
+/src/connectors/ @eliteacsllc
+/src/integrations/ @eliteacsllc
+/src/launch/ @eliteacsllc
+/src/persistence/ @eliteacsllc
+/src/security/ @eliteacsllc
