@@ -36,6 +36,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ELITE_AUTH_SECRET: ${{ secrets.ELITE_AUTH_SECRET }}
       TARGET_SHA: ${{ inputs.git_ref }}
       PRODUCTION_URL: ${{ inputs.production_url }}
 
@@ -58,6 +59,7 @@ jobs:
           }
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test "${#ELITE_AUTH_SECRET}" -ge 32
 
       - uses: actions/checkout@v4
         with:
@@ -117,3 +119,33 @@ jobs:
           echo 'Rollback readiness verification failed.' >&2
           cat /tmp/elite-ready.json 2>/dev/null || true
           exit 1
+
+      - name: Verify authenticated rollback lifecycle
+        shell: bash
+        run: |
+          node <<'NODE'
+          const { createHmac, randomUUID } = require('node:crypto');
+          const assert = require('node:assert/strict');
+          const secret = process.env.ELITE_AUTH_SECRET;
+          const base = process.env.PRODUCTION_URL.replace(/\/$/, '');
+          const runId = randomUUID();
+          const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+          const payload = Buffer.from(JSON.stringify({ userId: 'rollback-smoke', tenantId: 'rollback-smoke', roles: ['tenant_admin'], exp: Math.floor(Date.now()/1000)+300 })).toString('base64url');
+          const input = `${header}.${payload}`;
+          const signature = createHmac('sha256', secret).update(input).digest('base64url');
+          const token = `${input}.${signature}`;
+          const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': `rollback-smoke-${runId}` };
+          const body = JSON.stringify({ claimId: `rollback-smoke-${runId}`, asset: { assetClass: 'passenger_vehicle', vin: '1HGCM82633A004352' }, locale: 'en-US', currency: 'USD', jurisdiction: 'US' });
+          const create = await fetch(`${base}/v1/estimates`, { method: 'POST', headers, body });
+          const createText = await create.text();
+          assert.equal(create.status, 201, createText);
+          const estimate = JSON.parse(createText);
+          assert.ok(estimate.id);
+          const read = await fetch(`${base}/v1/estimates/${estimate.id}`, { headers: { authorization: `Bearer ${token}` } });
+          assert.equal(read.status, 200, await read.text());
+          const voided = await fetch(`${base}/v1/estimates/${estimate.id}/void`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' } });
+          const voidText = await voided.text();
+          assert.equal(voided.status, 200, voidText);
+          assert.equal(JSON.parse(voidText).status, 'voided');
+          console.log('authenticated rollback lifecycle smoke passed');
+          NODE
