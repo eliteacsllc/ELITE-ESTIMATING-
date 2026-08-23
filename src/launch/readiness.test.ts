@@ -50,6 +50,26 @@ test('missing production controls blocks launch', () => {
   assert.ok(result.findings.some(f => f.gate === 'claims_integration'));
 });
 
+test('placeholder secrets and invalid production values block launch', () => {
+  const badEnv = {
+    ...env,
+    ELITE_AUTH_SECRET: 'replace-with-a-long-random-secret',
+    ELITE_METRICS_TOKEN: 'REPLACE_WITH_METRICS_TOKEN_1234567890',
+    R2_SECRET_ACCESS_KEY: 'changeme',
+    ELITE_RATE_LIMIT_CAPACITY: '0',
+    ELITE_RATE_LIMIT_REFILL_PER_SECOND: 'not-a-number',
+    ELITE_CLAIMS_WEBHOOK_URL: 'http://localhost:8787/webhook',
+    ELITE_OUTBOX_MAX_PENDING: '-1',
+  };
+  const result = evaluateLaunchReadiness(manifest, badEnv);
+  assert.equal(result.green, false);
+  assert.ok(result.findings.some(f => f.gate === 'authentication'));
+  assert.ok(result.findings.some(f => f.gate === 'observability'));
+  assert.ok(result.findings.some(f => f.gate === 'evidence_storage'));
+  assert.ok(result.findings.some(f => f.gate === 'abuse_control'));
+  assert.ok(result.findings.some(f => f.gate === 'claims_integration'));
+});
+
 test('malformed manifest is rejected before evaluation', () => {
   assert.throws(() => assertLaunchManifest({ version: 1, market: 'US', assetClasses: 'auto' }), /invalid_launch_manifest_product/);
 });
