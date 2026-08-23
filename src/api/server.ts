@@ -98,9 +98,10 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && parts.join('/') === 'v1/estimates') {
       const body = await json(req);
       if (!body.asset || typeof body.asset !== 'object') throw new Error('asset_required');
+      const claimId = typeof body.claimId === 'string' && body.claimId.trim() ? body.claimId.trim() : null;
       const estimate = await service.create(actor, {
         tenantId: actor.tenantId,
-        claimId: typeof body.claimId === 'string' ? body.claimId : undefined,
+        ...(claimId ? { claimId } : {}),
         asset: body.asset as never,
         locale: String(body.locale ?? 'en-US'),
         currency: String(body.currency ?? 'USD'),
