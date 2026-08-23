@@ -1,6 +1,6 @@
 {
   "name": "elite-estimating",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,6 +15,7 @@
     "smoke:postgres:schema": "node dist/persistence/schema-smoke.js",
     "smoke:postgres:rate-limit": "node dist/security/postgres-rate-limit-smoke.js",
     "launch:check": "node dist/launch/cli.js",
+    "production:secrets": "node scripts/prepare-production-secrets.mjs",
     "dispatch:outbox": "node dist/integrations/dispatch-worker.js",
     "verify": "npm run typecheck && npm test"
   },
