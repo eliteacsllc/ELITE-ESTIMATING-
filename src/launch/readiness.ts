@@ -11,7 +11,6 @@ export type LaunchFinding = { gate: string; severity: 'blocker' | 'warning'; mes
 export type LaunchReadiness = { green: boolean; market: string | null; findings: LaunchFinding[] };
 
 const placeholderPatterns = [/^replace[-_ ]?with/i, /^replace_with/i, /^changeme$/i, /^todo$/i, /^placeholder$/i];
-function configured(value: string | undefined): boolean { return Boolean(value?.trim()); }
 function productionValue(value: string | undefined): boolean {
   const normalized = value?.trim();
   return Boolean(normalized) && !placeholderPatterns.some(pattern => pattern.test(normalized!));
@@ -27,6 +26,14 @@ function httpsUrl(value: string | undefined): boolean {
 function postgresUrl(value: string | undefined): boolean {
   if (!productionValue(value)) return false;
   try { const parsed = new URL(value!); return (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') && Boolean(parsed.hostname); } catch { return false; }
+}
+function postgresTransportSecure(value: string | undefined): boolean {
+  if (!postgresUrl(value)) return false;
+  const parsed = new URL(value!);
+  const host = parsed.hostname.toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  const sslMode = parsed.searchParams.get('sslmode')?.toLowerCase();
+  return sslMode === 'require' || sslMode === 'verify-ca' || sslMode === 'verify-full';
 }
 function stringArray(value: unknown): value is string[] { return Array.isArray(value) && value.every(item => typeof item === 'string' && item.trim().length > 0); }
 function object(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
@@ -49,6 +56,7 @@ export function evaluateLaunchReadiness(manifest: LaunchManifest, env: NodeJS.Pr
   if (!manifest.market.trim()) block('market', 'market is required');
   if (manifest.assetClasses.length === 0) block('product', 'at least one validated asset class is required');
   if (!postgresUrl(env.DATABASE_URL)) block('persistence', 'DATABASE_URL must be a non-placeholder PostgreSQL URL');
+  else if (!postgresTransportSecure(env.DATABASE_URL)) block('persistence', 'non-local PostgreSQL must require TLS with sslmode=require, verify-ca, or verify-full');
   if (enabled(env.ELITE_ALLOW_EPHEMERAL)) block('persistence', 'ephemeral storage must be disabled');
   const oidcConfigured = httpsUrl(env.ELITE_OIDC_ISSUER) && productionValue(env.ELITE_OIDC_AUDIENCE) && httpsUrl(env.ELITE_OIDC_JWKS_URL);
   const serviceTokenConfigured = productionValue(env.ELITE_AUTH_SECRET) && (env.ELITE_AUTH_SECRET?.length ?? 0) >= 32;
