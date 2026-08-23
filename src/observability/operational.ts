@@ -5,23 +5,27 @@ function escapeLabel(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 }
 
-export function renderOperationalMetrics(outbox: LifecycleOutboxHealth, providers: ProviderHealthSnapshot[] = []): string {
+export function renderOperationalMetrics(outbox: LifecycleOutboxHealth | null, providers: ProviderHealthSnapshot[] = []): string {
+  const safeOutbox = outbox ?? { unpublishedTotal: 0, pendingTotal: 0, retriedTotal: 0, exhaustedTotal: 0, oldestPendingSeconds: 0 };
   const lines = [
+    '# HELP elite_outbox_health_up Whether outbox health state could be read.',
+    '# TYPE elite_outbox_health_up gauge',
+    `elite_outbox_health_up ${outbox ? 1 : 0}`,
     '# HELP elite_outbox_unpublished Lifecycle events not yet published.',
     '# TYPE elite_outbox_unpublished gauge',
-    `elite_outbox_unpublished ${outbox.unpublishedTotal}`,
+    `elite_outbox_unpublished ${safeOutbox.unpublishedTotal}`,
     '# HELP elite_outbox_pending Lifecycle events still eligible for delivery retries.',
     '# TYPE elite_outbox_pending gauge',
-    `elite_outbox_pending ${outbox.pendingTotal}`,
+    `elite_outbox_pending ${safeOutbox.pendingTotal}`,
     '# HELP elite_outbox_retried Lifecycle events currently pending after at least one failed attempt.',
     '# TYPE elite_outbox_retried gauge',
-    `elite_outbox_retried ${outbox.retriedTotal}`,
+    `elite_outbox_retried ${safeOutbox.retriedTotal}`,
     '# HELP elite_outbox_exhausted Lifecycle events that reached the configured delivery attempt ceiling.',
     '# TYPE elite_outbox_exhausted gauge',
-    `elite_outbox_exhausted ${outbox.exhaustedTotal}`,
+    `elite_outbox_exhausted ${safeOutbox.exhaustedTotal}`,
     '# HELP elite_outbox_oldest_pending_seconds Age of the oldest retry-eligible lifecycle event.',
     '# TYPE elite_outbox_oldest_pending_seconds gauge',
-    `elite_outbox_oldest_pending_seconds ${outbox.oldestPendingSeconds}`,
+    `elite_outbox_oldest_pending_seconds ${safeOutbox.oldestPendingSeconds}`,
     '# HELP elite_provider_circuit_state Provider circuit breaker state; one series is 1 per provider.',
     '# TYPE elite_provider_circuit_state gauge',
     '# HELP elite_provider_failures_total Provider query failures observed by this process.',
