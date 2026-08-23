@@ -10,3 +10,5 @@ This branch verifies current main after adding:
 - regression tests for outbox idempotency and provider recovery
 
 The complete production smoke gate includes PostgreSQL migrations, strict tests, dependency audit, live readiness/health checks and Docker image build.
+
+Verification rerun: strict optional-state and supplement-domain fixes included.
