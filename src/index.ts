@@ -29,6 +29,8 @@ export * from './integrations/dispatcher.js';
 export * from './evidence/types.js';
 export * from './evidence/repository.js';
 export * from './evidence/service.js';
+export * from './evidence/blob-store.js';
+export * from './evidence/transfer-service.js';
 export * from './damage/graph.js';
 export * from './damage/repository.js';
 export * from './damage/service.js';
