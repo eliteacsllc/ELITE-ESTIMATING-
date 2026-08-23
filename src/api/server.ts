@@ -1,15 +1,18 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EstimatingService } from '../application/estimating-service.js';
+import { IdempotentEstimateCreationService } from '../application/idempotent-estimate-create.js';
 import { SupplementService } from '../application/supplement-service.js';
 import { InMemoryEstimateRepository } from '../persistence/memory.js';
 import { PostgresEstimateRepository } from '../persistence/postgres.js';
 import type { EstimateRepository } from '../persistence/repository.js';
 import { InMemorySupplementRepository, PostgresSupplementRepository, type SupplementRepository } from '../persistence/supplements.js';
+import { InMemoryIdempotencyRepository, PostgresIdempotencyRepository, type IdempotencyRepository } from './idempotency.js';
 import { NoopAuditSink, PostgresAuditSink } from '../audit/audit.js';
 import { MemoryLifecycleSink, PostgresLifecycleOutbox, type LifecycleSink } from '../integrations/outbox.js';
 import { verifyHs256Token } from '../security/token.js';
 import { OidcPrincipalVerifier, oidcConfigFromEnv } from '../security/oidc.js';
+import { InMemoryTokenBucketRateLimiter, principalRateLimitKey, rateLimitPolicyFromEnv } from '../security/rate-limit.js';
 import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
 import type { AddSupplementChangeInput } from '../application/supplement-service.js';
@@ -33,9 +36,13 @@ import { supplementManagerCss, supplementManagerJs } from '../web/supplement-man
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
 const requireBlobStorage = process.env.ELITE_REQUIRE_BLOB_STORAGE === '1';
+const requireIdempotency = process.env.ELITE_REQUIRE_IDEMPOTENCY === '1';
+const requireRateLimit = process.env.ELITE_REQUIRE_RATE_LIMIT === '1';
 const metricsToken = process.env.ELITE_METRICS_TOKEN?.trim() || null;
 if (metricsToken && metricsToken.length < 32) throw new Error('metrics_token_too_short');
 const outboxHealthPolicy = outboxHealthPolicyFromEnv();
+const rateLimitPolicy = rateLimitPolicyFromEnv();
+const rateLimiter = rateLimitPolicy ? new InMemoryTokenBucketRateLimiter(rateLimitPolicy) : null;
 const oidcConfig = oidcConfigFromEnv();
 const oidcVerifier = oidcConfig ? new OidcPrincipalVerifier(oidcConfig) : null;
 const r2Config = r2BlobStoreConfigFromEnv();
@@ -45,6 +52,7 @@ const postgresSupplements = databaseUrl ? new PostgresSupplementRepository(datab
 const postgresEvidence = databaseUrl ? new PostgresEvidenceRepository(databaseUrl) : null;
 const postgresDamageGraphs = databaseUrl ? new PostgresDamageGraphRepository(databaseUrl) : null;
 const postgresImportReceipts = databaseUrl ? new PostgresImportReceiptRepository(databaseUrl) : null;
+const postgresIdempotency = databaseUrl ? new PostgresIdempotencyRepository(databaseUrl) : null;
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
 const memoryLifecycle = postgresOutbox ? null : new MemoryLifecycleSink();
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
@@ -53,9 +61,11 @@ const supplementRepository: SupplementRepository = postgresSupplements ?? new In
 const evidenceRepository: EvidenceRepository = postgresEvidence ?? new InMemoryEvidenceRepository();
 const damageGraphRepository: DamageGraphRepository = postgresDamageGraphs ?? new InMemoryDamageGraphRepository();
 const importReceiptRepository: ImportReceiptRepository = postgresImportReceipts ?? new InMemoryImportReceiptRepository();
+const idempotencyRepository: IdempotencyRepository = postgresIdempotency ?? new InMemoryIdempotencyRepository();
 const lifecycleSink: LifecycleSink = postgresOutbox ?? memoryLifecycle!;
 const lifecycleHealthSource = postgresOutbox ?? memoryLifecycle!;
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
+const idempotentCreateService = new IdempotentEstimateCreationService(service, repository, idempotencyRepository);
 const supplementService = new SupplementService(repository, supplementRepository, lifecycleSink);
 const evidenceService = new EvidenceService(repository, evidenceRepository, blobStore ?? undefined);
 const evidenceTransferService = blobStore ? new EvidenceTransferService(repository, evidenceRepository, blobStore) : null;
@@ -74,10 +84,11 @@ function baseHeaders(): Record<string, string> {
   };
 }
 
-function send(res: ServerResponse, status: number, body: unknown): void {
+function send(res: ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     ...baseHeaders(),
+    ...extra,
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(payload),
     'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
@@ -118,6 +129,10 @@ function metricsAuthorized(req: IncomingMessage): boolean {
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
 
+function singleHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 async function principal(req: IncomingMessage): Promise<Principal> {
   const authorization = req.headers.authorization;
   if (!authorization?.startsWith('Bearer ')) throw new Error('unauthorized');
@@ -144,6 +159,10 @@ async function readiness(): Promise<{
   evidenceStorage: boolean;
   damageGraphStorage: boolean;
   importReceiptStorage: boolean;
+  idempotencyStorage: boolean;
+  idempotencyRequired: boolean;
+  rateLimitConfigured: boolean;
+  rateLimitRequired: boolean;
   blobStorageConfigured: boolean;
   blobStorageRequired: boolean;
   metricsConfigured: boolean;
@@ -157,20 +176,23 @@ async function readiness(): Promise<{
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
-  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresOutbox);
+  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresIdempotency && postgresOutbox);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
   const lifecycleOutbox = Boolean(postgresOutbox) || allowEphemeral;
   const evidenceStorage = Boolean(postgresEvidence) || allowEphemeral;
   const damageGraphStorage = postgresDamageGraphs ? await postgresDamageGraphs.health().catch(() => false) : allowEphemeral;
   const importReceiptStorage = postgresImportReceipts ? await postgresImportReceipts.health().catch(() => false) : allowEphemeral;
+  const idempotencyStorage = postgresIdempotency ? await postgresIdempotency.health().catch(() => false) : allowEphemeral;
   const blobStorageConfigured = Boolean(blobStore);
   const blobReady = !requireBlobStorage || blobStorageConfigured;
+  const rateLimitConfigured = Boolean(rateLimiter);
+  const rateLimitReady = !requireRateLimit || rateLimitConfigured;
   const outboxHealth = await lifecycleHealthSource.healthSnapshot().catch(() => null);
   const outboxEvaluation = outboxHealth
     ? evaluateOutboxHealth(outboxHealth, outboxHealthPolicy)
     : { healthy: false, reasons: ['outbox_health_unavailable'] };
   return {
-    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && blobReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
     authConfigured,
     authMode,
     durableStorage,
@@ -179,6 +201,10 @@ async function readiness(): Promise<{
     evidenceStorage,
     damageGraphStorage,
     importReceiptStorage,
+    idempotencyStorage,
+    idempotencyRequired: requireIdempotency,
+    rateLimitConfigured,
+    rateLimitRequired: requireRateLimit,
     blobStorageConfigured,
     blobStorageRequired: requireBlobStorage,
     metricsConfigured: Boolean(metricsToken),
@@ -226,6 +252,15 @@ const server = createServer(async (req, res) => {
     }
 
     const actor = await principal(req);
+    if (rateLimiter) {
+      const result = rateLimiter.consume(principalRateLimitKey(actor));
+      if (!result.allowed) {
+        return send(res, 429, { error: 'rate_limited', retryAfterSeconds: result.retryAfterSeconds }, {
+          'retry-after': String(result.retryAfterSeconds),
+          'x-ratelimit-remaining': String(result.remaining),
+        });
+      }
+    }
     const url = requestUrl(req.url);
     const parts = pathParts(req.url);
 
@@ -244,15 +279,20 @@ const server = createServer(async (req, res) => {
         const body = await json(req);
         if (!body.asset || typeof body.asset !== 'object') throw new Error('asset_required');
         const claimId = typeof body.claimId === 'string' && body.claimId.trim() ? body.claimId.trim() : null;
-        const estimate = await service.create(actor, {
-          tenantId: actor.tenantId,
+        const createInput = {
           ...(claimId ? { claimId } : {}),
           asset: body.asset as never,
           locale: String(body.locale ?? 'en-US'),
           currency: String(body.currency ?? 'USD'),
           jurisdiction: String(body.jurisdiction ?? 'US'),
-        });
-        return send(res, 201, estimate);
+        };
+        const idempotencyKey = singleHeader(req.headers['idempotency-key']);
+        if (requireIdempotency && !idempotencyKey) throw new Error('idempotency_key_required');
+        if (idempotencyKey) {
+          const result = await idempotentCreateService.create(actor, idempotencyKey, createInput);
+          return send(res, result.replayed ? 200 : 201, result.estimate, { 'idempotency-replayed': String(result.replayed) });
+        }
+        return send(res, 201, await service.create(actor, { tenantId: actor.tenantId, ...createInput }));
       }
       if (req.method === 'GET') {
         const claimId = url.searchParams.get('claimId');
@@ -317,6 +357,7 @@ const server = createServer(async (req, res) => {
     const status = message === 'unauthorized' || message.startsWith('invalid_token') || message === 'token_expired' ? 401
       : message.includes('not_permitted') || message.includes('access_denied') ? 403
       : message === 'estimate_not_found' || message === 'supplement_not_found' || message === 'damage_graph_not_found' || message === 'evidence_not_found' ? 404
+      : message === 'idempotency_key_reused_with_different_request' || message === 'idempotency_request_in_progress' ? 409
       : message === 'blob_storage_not_configured' ? 503
       : message === 'request_too_large' ? 413
       : 400;
@@ -337,6 +378,7 @@ const shutdown = async () => {
   if (postgresEvidence) await postgresEvidence.close();
   if (postgresDamageGraphs) await postgresDamageGraphs.close();
   if (postgresImportReceipts) await postgresImportReceipts.close();
+  if (postgresIdempotency) await postgresIdempotency.close();
   if (postgresOutbox) await postgresOutbox.close();
   if (auditSink instanceof PostgresAuditSink) await auditSink.close();
 };
