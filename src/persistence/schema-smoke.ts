@@ -14,6 +14,7 @@ const requiredTables = [
   'estimate_damage_graphs',
   'estimate_import_receipts',
   'mutation_idempotency_receipts',
+  'rate_limit_buckets',
 ] as const;
 
 const requiredIndexes = [
@@ -24,6 +25,7 @@ const requiredIndexes = [
   'estimate_import_receipts_local_idx',
   'mutation_idempotency_expiry_idx',
   'mutation_idempotency_resource_idx',
+  'rate_limit_buckets_last_seen_idx',
 ] as const;
 
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });
@@ -38,7 +40,7 @@ try {
   }
 
   const migrationCount = await pool.query('SELECT COUNT(*)::int AS count FROM schema_migrations');
-  assert.ok(Number(migrationCount.rows[0]?.count ?? 0) >= 8, 'expected at least eight applied migrations');
+  assert.ok(Number(migrationCount.rows[0]?.count ?? 0) >= 9, 'expected at least nine applied migrations');
 
   const orphanEvidence = await pool.query(
     `SELECT COUNT(*)::int AS count
