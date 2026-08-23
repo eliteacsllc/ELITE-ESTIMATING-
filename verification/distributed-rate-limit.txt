@@ -1,0 +1,1 @@
+Distributed rate limit checkpoint: PostgreSQL token buckets, multi-instance concurrency smoke, readiness durability reporting, migration/schema coverage.
