@@ -1,6 +1,6 @@
 # Production Deployment and Rollback
 
-Elite Estimating production deployment is manual, evidence-gated, and container-based. The verified application Dockerfile remains the source of truth. Cloudflare Workers + Containers provide the edge/runtime adapter; PostgreSQL is the shared durable state plane and R2 is the evidence blob store.
+Elite Estimating production deployment is manual, evidence-gated, and container-based. The verified application Dockerfile remains the source of truth. Cloudflare Workers + Containers provide the edge/runtime adapter; PostgreSQL is the shared durable state plane and R2 is the evidence blob store. Application and deployment tooling require Node.js 22 or newer; the production Docker image currently uses Node 22 LTS.
 
 ## Production GitHub environment
 
@@ -46,12 +46,12 @@ Use **Actions → Deploy Elite Estimating Production → Run workflow**.
 
 Inputs:
 
-- `production_url`: the public HTTPS base URL that will serve Elite Estimating.
+- `production_url`: the clean public HTTPS origin that will serve Elite Estimating; paths, credentials, query strings, and fragments are rejected.
 - `confirmation`: must equal `DEPLOY`.
 
 The workflow performs, in order:
 
-1. required-secret validation;
+1. deployment-input and required-secret validation;
 2. application install, strict verification, and production dependency audit;
 3. real launch-manifest certification;
 4. Cloudflare adapter install and typecheck;
@@ -60,24 +60,25 @@ The workflow performs, in order:
 7. Cloudflare Worker secret synchronization;
 8. Worker + Containers deployment with immediate container rollout;
 9. temporary secret-bundle deletion;
-10. repeated public `/ready` checks until the deployment reports ready or the gate fails.
+10. repeated public `/ready` checks until the deployment reports ready or the gate fails;
+11. authenticated remote smoke through the public origin: health/readiness, estimate creation, idempotent replay, read-back, and terminal void.
 
-A successful `wrangler deploy` alone is not treated as launch success. The workflow requires public `/ready` HTTP 200 plus `status=ready`, `rateLimitDurable=true`, and `rateLimitHealthy=true`.
+A successful `wrangler deploy` alone is not treated as launch success. The workflow requires public `/ready` HTTP 200 plus `status=ready`, `rateLimitDurable=true`, and `rateLimitHealthy=true`, followed by the authenticated remote smoke.
 
 ## Rollback
 
 Cloudflare Worker rollback by itself is not sufficient for this application because Worker activation and container image rollout are separate concerns, and older application code may not be compatible with a newer PostgreSQL schema.
 
-Use **Actions → Roll Back Elite Estimating Production → Run workflow** only with a previously verified Git commit or tag.
+Use **Actions → Roll Back Elite Estimating Production → Run workflow** only with a previously verified immutable Git commit.
 
 Inputs:
 
-- `git_ref`: known-good commit SHA or tag.
-- `production_url`: public production base URL.
-- `database_compatibility`: must equal `DB-COMPATIBLE` after a human confirms the target revision can run against the current production schema.
+- `git_ref`: known-good immutable 40-character commit SHA. Branch names and tags are rejected.
+- `production_url`: clean public HTTPS production origin.
+- `database_compatibility`: must equal `DB-COMPATIBLE` after a human confirms the target commit can run against the current production schema.
 - `confirmation`: must equal `ROLLBACK`.
 
-The rollback workflow checks out the target source, reruns application verification, typechecks the target Cloudflare adapter, rebuilds the old Docker image, redeploys the Worker/container pair, and verifies public readiness.
+The rollback workflow verifies the exact checkout SHA, reruns application verification, typechecks the target Cloudflare adapter, rebuilds the historical Docker image, redeploys the Worker/container pair, verifies public readiness, then executes an authenticated create/read/void lifecycle against the restored service.
 
 ## Database rollback policy
 
