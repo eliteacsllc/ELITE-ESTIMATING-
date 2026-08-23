@@ -45,12 +45,19 @@ export class PostgresSupplementRepository implements SupplementRepository {
   }
 
   async create(tenantId: string, supplement: Supplement): Promise<Supplement> {
-    await this.pool.query(
-      `INSERT INTO supplements (tenant_id,id,estimate_id,base_revision,status,payload,created_at,updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$7)`,
-      [tenantId,supplement.id,supplement.estimateId,supplement.baseRevision,supplement.status,JSON.stringify(supplement),supplement.createdAt],
-    );
-    return structuredClone(supplement);
+    try {
+      await this.pool.query(
+        `INSERT INTO supplements (tenant_id,id,estimate_id,base_revision,status,payload,created_at,updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$7)`,
+        [tenantId,supplement.id,supplement.estimateId,supplement.baseRevision,supplement.status,JSON.stringify(supplement),supplement.createdAt],
+      );
+      return structuredClone(supplement);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && (error as Error & { code?: string }).code === '23505') {
+        throw new Error('supplement_already_exists');
+      }
+      throw error;
+    }
   }
 
   async getById(tenantId: string, id: string): Promise<Supplement | null> {
