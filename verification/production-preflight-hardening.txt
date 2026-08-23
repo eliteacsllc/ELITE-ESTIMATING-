@@ -1,0 +1,1 @@
+Production preflight checkpoint: placeholder-secret rejection, PostgreSQL URL validation, positive rate-limit validation, non-negative outbox thresholds, HTTPS claims webhook enforcement.
