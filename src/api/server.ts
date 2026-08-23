@@ -25,6 +25,7 @@ import type { DamageGraph } from '../damage/graph.js';
 import { DamageGraphService } from '../damage/service.js';
 import { InMemoryDamageGraphRepository, PostgresDamageGraphRepository, type DamageGraphRepository } from '../damage/repository.js';
 import { HttpMetrics, normalizeMetricRoute } from '../observability/metrics.js';
+import { evaluateOutboxHealth, outboxHealthPolicyFromEnv, renderOperationalMetrics } from '../observability/operational.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
 import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
@@ -34,6 +35,7 @@ const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
 const requireBlobStorage = process.env.ELITE_REQUIRE_BLOB_STORAGE === '1';
 const metricsToken = process.env.ELITE_METRICS_TOKEN?.trim() || null;
 if (metricsToken && metricsToken.length < 32) throw new Error('metrics_token_too_short');
+const outboxHealthPolicy = outboxHealthPolicyFromEnv();
 const oidcConfig = oidcConfigFromEnv();
 const oidcVerifier = oidcConfig ? new OidcPrincipalVerifier(oidcConfig) : null;
 const r2Config = r2BlobStoreConfigFromEnv();
@@ -44,13 +46,15 @@ const postgresEvidence = databaseUrl ? new PostgresEvidenceRepository(databaseUr
 const postgresDamageGraphs = databaseUrl ? new PostgresDamageGraphRepository(databaseUrl) : null;
 const postgresImportReceipts = databaseUrl ? new PostgresImportReceiptRepository(databaseUrl) : null;
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
+const memoryLifecycle = postgresOutbox ? null : new MemoryLifecycleSink();
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
 const supplementRepository: SupplementRepository = postgresSupplements ?? new InMemorySupplementRepository();
 const evidenceRepository: EvidenceRepository = postgresEvidence ?? new InMemoryEvidenceRepository();
 const damageGraphRepository: DamageGraphRepository = postgresDamageGraphs ?? new InMemoryDamageGraphRepository();
 const importReceiptRepository: ImportReceiptRepository = postgresImportReceipts ?? new InMemoryImportReceiptRepository();
-const lifecycleSink: LifecycleSink = postgresOutbox ?? new MemoryLifecycleSink();
+const lifecycleSink: LifecycleSink = postgresOutbox ?? memoryLifecycle!;
+const lifecycleHealthSource = postgresOutbox ?? memoryLifecycle!;
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
 const supplementService = new SupplementService(repository, supplementRepository, lifecycleSink);
 const evidenceService = new EvidenceService(repository, evidenceRepository, blobStore ?? undefined);
@@ -130,7 +134,26 @@ async function principal(req: IncomingMessage): Promise<Principal> {
 function requestUrl(url = '/'): URL { return new URL(url, 'http://localhost'); }
 function pathParts(url = '/'): string[] { return requestUrl(url).pathname.split('/').filter(Boolean); }
 
-async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; authMode: 'oidc' | 'service_token' | 'unconfigured'; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean; evidenceStorage: boolean; damageGraphStorage: boolean; importReceiptStorage: boolean; blobStorageConfigured: boolean; blobStorageRequired: boolean; metricsConfigured: boolean }> {
+async function readiness(): Promise<{
+  ready: boolean;
+  authConfigured: boolean;
+  authMode: 'oidc' | 'service_token' | 'unconfigured';
+  durableStorage: boolean;
+  databaseHealthy: boolean;
+  lifecycleOutbox: boolean;
+  evidenceStorage: boolean;
+  damageGraphStorage: boolean;
+  importReceiptStorage: boolean;
+  blobStorageConfigured: boolean;
+  blobStorageRequired: boolean;
+  metricsConfigured: boolean;
+  outboxHealthAvailable: boolean;
+  outboxHealthy: boolean;
+  outboxHealthReasons: string[];
+  outboxPending: number;
+  outboxExhausted: number;
+  outboxOldestPendingSeconds: number;
+}> {
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
@@ -142,8 +165,12 @@ async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; a
   const importReceiptStorage = postgresImportReceipts ? await postgresImportReceipts.health().catch(() => false) : allowEphemeral;
   const blobStorageConfigured = Boolean(blobStore);
   const blobReady = !requireBlobStorage || blobStorageConfigured;
+  const outboxHealth = await lifecycleHealthSource.healthSnapshot().catch(() => null);
+  const outboxEvaluation = outboxHealth
+    ? evaluateOutboxHealth(outboxHealth, outboxHealthPolicy)
+    : { healthy: false, reasons: ['outbox_health_unavailable'] };
   return {
-    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && blobReady && (durableStorage || allowEphemeral),
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && blobReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
     authConfigured,
     authMode,
     durableStorage,
@@ -155,6 +182,12 @@ async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; a
     blobStorageConfigured,
     blobStorageRequired: requireBlobStorage,
     metricsConfigured: Boolean(metricsToken),
+    outboxHealthAvailable: Boolean(outboxHealth),
+    outboxHealthy: outboxEvaluation.healthy,
+    outboxHealthReasons: outboxEvaluation.reasons,
+    outboxPending: outboxHealth?.pendingTotal ?? 0,
+    outboxExhausted: outboxHealth?.exhaustedTotal ?? 0,
+    outboxOldestPendingSeconds: outboxHealth?.oldestPendingSeconds ?? 0,
   };
 }
 
@@ -170,7 +203,9 @@ const server = createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && req.url === '/metrics') {
       if (!metricsAuthorized(req)) return send(res, 404, { error: 'not_found' });
-      return sendText(res, 200, 'text/plain; version=0.0.4; charset=utf-8', httpMetrics.renderPrometheus(), "default-src 'none'; frame-ancestors 'none'");
+      const outboxHealth = await lifecycleHealthSource.healthSnapshot().catch(() => null);
+      const payload = httpMetrics.renderPrometheus() + renderOperationalMetrics(outboxHealth);
+      return sendText(res, 200, 'text/plain; version=0.0.4; charset=utf-8', payload, "default-src 'none'; frame-ancestors 'none'");
     }
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
       const html = indexHtml
