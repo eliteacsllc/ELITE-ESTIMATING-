@@ -30,6 +30,15 @@ export class InMemoryEstimateRepository implements EstimateRepository {
   async listByClaim(tenantId: string, claimId: string): Promise<Estimate[]> {
     return [...this.rows.values()]
       .filter((row) => row.tenantId === tenantId && row.claimId === claimId)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .map((row) => structuredClone(row));
+  }
+
+  async listRecent(tenantId: string, limit: number): Promise<Estimate[]> {
+    return [...this.rows.values()]
+      .filter((row) => row.tenantId === tenantId)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, Math.max(1, Math.min(limit, 100)))
       .map((row) => structuredClone(row));
   }
 }
