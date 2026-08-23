@@ -1,0 +1,146 @@
+name: Deploy Elite Estimating Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      production_url:
+        description: Public production base URL, for example https://estimating.example.com
+        required: true
+        type: string
+      confirmation:
+        description: Type DEPLOY to authorize production rollout
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elite-estimating-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ inputs.confirmation == 'DEPLOY' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ELITE_AUTH_SECRET: ${{ secrets.ELITE_AUTH_SECRET }}
+      ELITE_METRICS_TOKEN: ${{ secrets.ELITE_METRICS_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      ELITE_CLAIMS_WEBHOOK_URL: ${{ secrets.ELITE_CLAIMS_WEBHOOK_URL }}
+      ELITE_CLAIMS_WEBHOOK_SECRET: ${{ secrets.ELITE_CLAIMS_WEBHOOK_SECRET }}
+      ELITE_REQUIRE_IDEMPOTENCY: '1'
+      ELITE_REQUIRE_RATE_LIMIT: '1'
+      ELITE_RATE_LIMIT_CAPACITY: '120'
+      ELITE_RATE_LIMIT_REFILL_PER_SECOND: '2'
+      ELITE_REQUIRE_BLOB_STORAGE: '1'
+      ELITE_OUTBOX_MAX_PENDING: '1000'
+      ELITE_OUTBOX_MAX_AGE_SECONDS: '300'
+      ELITE_OUTBOX_MAX_EXHAUSTED: '0'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate required GitHub production secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID DATABASE_URL ELITE_AUTH_SECRET
+            ELITE_METRICS_TOKEN R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
+            ELITE_CLAIMS_WEBHOOK_URL ELITE_CLAIMS_WEBHOOK_SECRET
+          )
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required production secret: $name" >&2
+              exit 1
+            fi
+          done
+          if [ -z "${{ secrets.ELITE_LAUNCH_MANIFEST_JSON }}" ]; then
+            echo 'Missing required production secret: ELITE_LAUNCH_MANIFEST_JSON' >&2
+            exit 1
+          fi
+
+      - name: Install and verify application
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run verify
+          npm audit --omit=dev --audit-level=high
+
+      - name: Verify production launch evidence
+        shell: bash
+        env:
+          ELITE_LAUNCH_MANIFEST_JSON: ${{ secrets.ELITE_LAUNCH_MANIFEST_JSON }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$ELITE_LAUNCH_MANIFEST_JSON" > /tmp/elite-launch-manifest.json
+          npm run launch:check -- /tmp/elite-launch-manifest.json
+          rm -f /tmp/elite-launch-manifest.json
+
+      - name: Typecheck Cloudflare deployment adapter
+        working-directory: deploy/cloudflare
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run check
+
+      - name: Build production container locally
+        run: docker build -t elite-estimating:production-candidate .
+
+      - name: Create ephemeral Cloudflare secret bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const names = [
+            'DATABASE_URL','ELITE_AUTH_SECRET','ELITE_METRICS_TOKEN','R2_ACCOUNT_ID','R2_BUCKET',
+            'R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY','ELITE_CLAIMS_WEBHOOK_URL','ELITE_CLAIMS_WEBHOOK_SECRET'
+          ];
+          const payload = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+          fs.writeFileSync('/tmp/elite-cloudflare-secrets.json', JSON.stringify(payload), { mode: 0o600 });
+          NODE
+
+      - name: Sync Worker runtime secrets
+        working-directory: deploy/cloudflare
+        run: npx wrangler secret bulk /tmp/elite-cloudflare-secrets.json --config wrangler.jsonc
+
+      - name: Deploy Worker and container rollout
+        working-directory: deploy/cloudflare
+        run: npx wrangler deploy --config wrangler.jsonc --containers-rollout=immediate
+
+      - name: Remove ephemeral secret bundle
+        if: always()
+        run: rm -f /tmp/elite-cloudflare-secrets.json /tmp/elite-launch-manifest.json
+
+      - name: Verify public production readiness
+        shell: bash
+        env:
+          PRODUCTION_URL: ${{ inputs.production_url }}
+        run: |
+          set -euo pipefail
+          base="${PRODUCTION_URL%/}"
+          for attempt in $(seq 1 30); do
+            code=$(curl --silent --show-error --output /tmp/elite-ready.json --write-out '%{http_code}' "$base/ready" || true)
+            if [ "$code" = '200' ] && grep -q '"status":"ready"' /tmp/elite-ready.json \
+              && grep -q '"rateLimitDurable":true' /tmp/elite-ready.json \
+              && grep -q '"rateLimitHealthy":true' /tmp/elite-ready.json; then
+              cat /tmp/elite-ready.json
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Production readiness verification failed.' >&2
+          cat /tmp/elite-ready.json 2>/dev/null || true
+          exit 1
