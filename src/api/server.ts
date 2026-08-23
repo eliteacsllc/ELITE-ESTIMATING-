@@ -6,6 +6,7 @@ import { PostgresEstimateRepository } from '../persistence/postgres.js';
 import type { EstimateRepository } from '../persistence/repository.js';
 import { InMemorySupplementRepository, PostgresSupplementRepository, type SupplementRepository } from '../persistence/supplements.js';
 import { NoopAuditSink, PostgresAuditSink } from '../audit/audit.js';
+import { MemoryLifecycleSink, PostgresLifecycleOutbox, type LifecycleSink } from '../integrations/outbox.js';
 import { verifyHs256Token } from '../security/token.js';
 import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
@@ -18,11 +19,13 @@ const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
 const postgresRepository = databaseUrl ? new PostgresEstimateRepository(databaseUrl) : null;
 const postgresSupplements = databaseUrl ? new PostgresSupplementRepository(databaseUrl) : null;
+const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
 const supplementRepository: SupplementRepository = postgresSupplements ?? new InMemorySupplementRepository();
-const service = new EstimatingService(repository, [], auditSink);
-const supplementService = new SupplementService(repository, supplementRepository);
+const lifecycleSink: LifecycleSink = postgresOutbox ?? new MemoryLifecycleSink();
+const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
+const supplementService = new SupplementService(repository, supplementRepository, lifecycleSink);
 const interchange = new EliteJsonInterchangeAdapter();
 
 function baseHeaders(): Record<string, string> {
@@ -86,11 +89,12 @@ function pathParts(url = '/'): string[] {
   return requestUrl(url).pathname.split('/').filter(Boolean);
 }
 
-async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; durableStorage: boolean; databaseHealthy: boolean }> {
+async function readiness(): Promise<{ ready: boolean; authConfigured: boolean; durableStorage: boolean; databaseHealthy: boolean; lifecycleOutbox: boolean }> {
   const authConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
-  const durableStorage = Boolean(postgresRepository && postgresSupplements);
+  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresOutbox);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
-  return { ready: authConfigured && databaseHealthy && (durableStorage || allowEphemeral), authConfigured, durableStorage, databaseHealthy };
+  const lifecycleOutbox = Boolean(postgresOutbox) || allowEphemeral;
+  return { ready: authConfigured && databaseHealthy && lifecycleOutbox && (durableStorage || allowEphemeral), authConfigured, durableStorage, databaseHealthy, lifecycleOutbox };
 }
 
 const server = createServer(async (req, res) => {
@@ -196,6 +200,7 @@ const shutdown = async () => {
   server.close();
   if (postgresRepository) await postgresRepository.close();
   if (postgresSupplements) await postgresSupplements.close();
+  if (postgresOutbox) await postgresOutbox.close();
   if (auditSink instanceof PostgresAuditSink) await auditSink.close();
 };
 process.on('SIGTERM', shutdown);
