@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 
-const secret = process.env.ELITE_AUTH_SECRET;
+const secret = process.env.ELITE_AUTH_SECRET ?? '';
 const port = Number(process.env.PORT ?? 8787);
-if (!secret || secret.length < 32) throw new Error('ELITE_AUTH_SECRET is required');
+if (secret.length < 32) throw new Error('ELITE_AUTH_SECRET is required');
 
 function sign(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
