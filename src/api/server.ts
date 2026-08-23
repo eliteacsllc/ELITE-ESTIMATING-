@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { EstimatingService } from '../application/estimating-service.js';
 import { IdempotentEstimateCreationService } from '../application/idempotent-estimate-create.js';
 import { SupplementService } from '../application/supplement-service.js';
+import { IdempotentSupplementCreationService } from '../application/idempotent-supplement-create.js';
 import { InMemoryEstimateRepository } from '../persistence/memory.js';
 import { PostgresEstimateRepository } from '../persistence/postgres.js';
 import type { EstimateRepository } from '../persistence/repository.js';
@@ -67,6 +68,7 @@ const lifecycleHealthSource = postgresOutbox ?? memoryLifecycle!;
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
 const idempotentCreateService = new IdempotentEstimateCreationService(service, repository, idempotencyRepository);
 const supplementService = new SupplementService(repository, supplementRepository, lifecycleSink);
+const idempotentSupplementCreateService = new IdempotentSupplementCreationService(supplementService, supplementRepository, idempotencyRepository);
 const evidenceService = new EvidenceService(repository, evidenceRepository, blobStore ?? undefined);
 const evidenceTransferService = blobStore ? new EvidenceTransferService(repository, evidenceRepository, blobStore) : null;
 const damageGraphService = new DamageGraphService(repository, damageGraphRepository);
@@ -339,7 +341,15 @@ const server = createServer(async (req, res) => {
         if (req.method === 'POST') return send(res, 201, await evidenceService.register(actor, id, await json(req) as unknown as RegisterEvidenceInput));
       }
       if (parts[3] === 'supplements' && parts.length === 4) {
-        if (req.method === 'POST') return send(res, 201, await supplementService.create(actor, id));
+        if (req.method === 'POST') {
+          const idempotencyKey = singleHeader(req.headers['idempotency-key']);
+          if (requireIdempotency && !idempotencyKey) throw new Error('idempotency_key_required');
+          if (idempotencyKey) {
+            const result = await idempotentSupplementCreateService.create(actor, idempotencyKey, id);
+            return send(res, result.replayed ? 200 : 201, result.supplement, { 'idempotency-replayed': String(result.replayed) });
+          }
+          return send(res, 201, await supplementService.create(actor, id));
+        }
         if (req.method === 'GET') return send(res, 200, await supplementService.list(actor, id));
       }
       if (req.method === 'PUT' && parts[3] === 'lines') {
@@ -357,7 +367,11 @@ const server = createServer(async (req, res) => {
     const status = message === 'unauthorized' || message.startsWith('invalid_token') || message === 'token_expired' ? 401
       : message.includes('not_permitted') || message.includes('access_denied') ? 403
       : message === 'estimate_not_found' || message === 'supplement_not_found' || message === 'damage_graph_not_found' || message === 'evidence_not_found' ? 404
-      : message === 'idempotency_key_reused_with_different_request' || message === 'idempotency_request_in_progress' ? 409
+      : message === 'idempotency_key_reused_with_different_request'
+        || message === 'idempotency_request_in_progress'
+        || message === 'idempotency_resource_conflict'
+        || message === 'estimate_concurrent_modification'
+        || message === 'evidence_source_conflict' ? 409
       : message === 'blob_storage_not_configured' ? 503
       : message === 'request_too_large' ? 413
       : 400;
