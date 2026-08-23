@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS audit_events (
   id UUID PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -18,5 +16,3 @@ CREATE INDEX IF NOT EXISTS audit_events_actor_idx
   ON audit_events (tenant_id, actor_id, occurred_at DESC);
 
 REVOKE UPDATE, DELETE ON audit_events FROM PUBLIC;
-
-COMMIT;
