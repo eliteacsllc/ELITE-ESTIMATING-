@@ -83,6 +83,6 @@ const voided = await expectJson(await fetch(`${base}/v1/estimates/${estimateId}/
   headers,
 }), 200);
 assert.equal(voided.id, estimateId);
-assert.equal(voided.status, 'voided');
+assert.equal(voided.status, 'void');
 
 console.log(`remote deployment smoke passed for ${base}`);
