@@ -60,7 +60,7 @@ export class EstimatingService {
     const estimate: Estimate = {
       id: randomUUID(),
       tenantId: input.tenantId,
-      claimId: input.claimId,
+      ...(input.claimId ? { claimId: input.claimId } : {}),
       asset: input.asset,
       locale: input.locale,
       currency: input.currency.toUpperCase(),
@@ -75,7 +75,7 @@ export class EstimatingService {
       updatedAt: now,
     };
     const saved = await this.repository.create(estimate);
-    await this.record(principal, 'estimate.created', saved, { claimId: saved.claimId });
+    await this.record(principal, 'estimate.created', saved, saved.claimId ? { claimId: saved.claimId } : {});
     return saved;
   }
 
