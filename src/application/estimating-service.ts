@@ -13,6 +13,7 @@ import type { LifecycleSink, LifecycleTopic } from '../integrations/outbox.js';
 import { lifecycleEvent, NoopLifecycleSink } from '../integrations/outbox.js';
 
 export type CreateEstimateInput = {
+  id?: string;
   tenantId: string;
   claimId?: string;
   asset: AssetIdentity;
@@ -78,9 +79,10 @@ export class EstimatingService {
       ...validateJurisdiction(input.jurisdiction),
     ]);
     if (input.claimId && input.claimId.length > 120) throw new Error('validation_failed:claim_id_too_long');
+    if (input.id && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.id)) throw new Error('validation_failed:estimate_id_invalid');
     const now = new Date().toISOString();
     const estimate: Estimate = {
-      id: randomUUID(),
+      id: input.id ?? randomUUID(),
       tenantId: input.tenantId,
       ...(input.claimId ? { claimId: input.claimId } : {}),
       asset: input.asset,
