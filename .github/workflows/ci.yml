@@ -42,14 +42,17 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          package-manager-cache: false
-      - run: npm install --ignore-scripts --no-audit --no-fund
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            deploy/cloudflare/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run verify
       - run: npm audit --omit=dev --audit-level=high
       - name: Typecheck Cloudflare Containers adapter
         working-directory: deploy/cloudflare
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npm run check
       - name: Run database migrations
         run: npm run migrate
