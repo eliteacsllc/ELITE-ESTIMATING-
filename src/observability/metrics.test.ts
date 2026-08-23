@@ -18,3 +18,12 @@ test('metrics render without request identifiers or tenant data', () => {
   assert.doesNotMatch(output, /secret-id/);
   assert.match(output, /status_class="2xx"/);
 });
+
+test('histogram total includes requests slower than largest finite bucket', () => {
+  const metrics = new HttpMetrics();
+  metrics.begin();
+  metrics.record('POST', '/v1/imports/elite-json', 201, 9000);
+  const output = metrics.renderPrometheus();
+  assert.match(output, /le="\+Inf"\} 1/);
+  assert.match(output, /elite_http_request_duration_seconds_count\{method="POST",route="\/v1\/imports\/elite-json"\} 1/);
+});
