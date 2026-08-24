@@ -50,14 +50,11 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('release-evidence/application.cdx.json','utf8')); JSON.parse(require('fs').readFileSync('release-evidence/cloudflare-adapter.cdx.json','utf8'))"
 
       - name: Record immutable build metadata
-        shell: bash
         run: |
-          set -euo pipefail
-          ROOT_LOCK_SHA=$(sha256sum package-lock.json | awk '{print $1}')
-          CF_LOCK_SHA=$(sha256sum deploy/cloudflare/package-lock.json | awk '{print $1}')
-          DOCKERFILE_SHA=$(sha256sum Dockerfile | awk '{print $1}')
           node <<'NODE'
+          const { createHash } = require('node:crypto');
           const fs = require('node:fs');
+          const sha256 = (path) => createHash('sha256').update(fs.readFileSync(path)).digest('hex');
           const metadata = {
             schema: 'elite-estimating/release-evidence/v1',
             repository: process.env.GITHUB_REPOSITORY,
@@ -68,17 +65,13 @@ jobs:
             workflow: process.env.GITHUB_WORKFLOW,
             nodeVersion: process.version,
             lockfiles: {
-              applicationSha256: process.env.ROOT_LOCK_SHA,
-              cloudflareAdapterSha256: process.env.CF_LOCK_SHA
+              applicationSha256: sha256('package-lock.json'),
+              cloudflareAdapterSha256: sha256('deploy/cloudflare/package-lock.json')
             },
-            dockerfileSha256: process.env.DOCKERFILE_SHA
+            dockerfileSha256: sha256('Dockerfile')
           };
           fs.writeFileSync('release-evidence/build-metadata.json', JSON.stringify(metadata, null, 2) + '\n');
           NODE
-        env:
-          ROOT_LOCK_SHA: ${{ env.ROOT_LOCK_SHA }}
-          CF_LOCK_SHA: ${{ env.CF_LOCK_SHA }}
-          DOCKERFILE_SHA: ${{ env.DOCKERFILE_SHA }}
 
       - name: Verify evidence content
         shell: bash
