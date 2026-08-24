@@ -1,0 +1,99 @@
+name: Release Evidence
+
+on:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - deploy/cloudflare/package.json
+      - deploy/cloudflare/package-lock.json
+      - Dockerfile
+      - .github/workflows/release-evidence.yml
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            deploy/cloudflare/package-lock.json
+
+      - name: Install locked dependency graphs
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm --prefix deploy/cloudflare ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate CycloneDX SBOMs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-evidence
+          npm sbom --package-lock-only --sbom-format=cyclonedx --sbom-type=application > release-evidence/application.cdx.json
+          (
+            cd deploy/cloudflare
+            npm sbom --package-lock-only --sbom-format=cyclonedx --sbom-type=application
+          ) > release-evidence/cloudflare-adapter.cdx.json
+          node -e "JSON.parse(require('fs').readFileSync('release-evidence/application.cdx.json','utf8')); JSON.parse(require('fs').readFileSync('release-evidence/cloudflare-adapter.cdx.json','utf8'))"
+
+      - name: Record immutable build metadata
+        run: |
+          node <<'NODE'
+          const { createHash } = require('node:crypto');
+          const fs = require('node:fs');
+          const sha256 = (path) => createHash('sha256').update(fs.readFileSync(path)).digest('hex');
+          const metadata = {
+            schema: 'elite-estimating/release-evidence/v1',
+            repository: process.env.GITHUB_REPOSITORY,
+            commitSha: process.env.GITHUB_SHA,
+            ref: process.env.GITHUB_REF,
+            runId: process.env.GITHUB_RUN_ID,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            workflow: process.env.GITHUB_WORKFLOW,
+            nodeVersion: process.version,
+            lockfiles: {
+              applicationSha256: sha256('package-lock.json'),
+              cloudflareAdapterSha256: sha256('deploy/cloudflare/package-lock.json')
+            },
+            dockerfileSha256: sha256('Dockerfile')
+          };
+          fs.writeFileSync('release-evidence/build-metadata.json', JSON.stringify(metadata, null, 2) + '\n');
+          NODE
+
+      - name: Verify evidence content
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s release-evidence/application.cdx.json
+          test -s release-evidence/cloudflare-adapter.cdx.json
+          test -s release-evidence/build-metadata.json
+          grep -q '"bomFormat": "CycloneDX"' release-evidence/application.cdx.json
+          grep -q '"bomFormat": "CycloneDX"' release-evidence/cloudflare-adapter.cdx.json
+          grep -q "${GITHUB_SHA}" release-evidence/build-metadata.json
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-${{ github.sha }}
+          path: release-evidence/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Attest release evidence on trusted main builds
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: release-evidence/*
