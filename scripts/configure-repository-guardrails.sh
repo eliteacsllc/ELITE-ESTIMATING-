@@ -17,6 +17,8 @@ fi
 cat <<EOF
 Configuring repository guardrails for ${REPO}:${BRANCH}
 - require the 'core' CI status check
+- require the 'analyze-javascript-typescript' CodeQL status check
+- require the 'evidence' release-provenance/SBOM status check
 - require branches to be up to date before merge
 - require pull-request review flow with zero mandatory approvals (safe for a single-owner repo)
 - dismiss stale approvals if collaborators are added later
@@ -34,7 +36,7 @@ gh api \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["core"]
+    "contexts": ["core", "analyze-javascript-typescript", "evidence"]
   },
   "enforce_admins": true,
   "required_pull_request_reviews": {
