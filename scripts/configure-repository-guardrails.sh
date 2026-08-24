@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO="${1:-eliteacsllc/ELITE-ESTIMATING-}"
 BRANCH="${2:-main}"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "ERROR: GitHub CLI (gh) is required." >&2
@@ -56,4 +57,6 @@ gh api \
 }
 JSON
 
-echo "Guardrails configured. Verify at: https://github.com/${REPO}/settings/branches"
+echo "Guardrails API update completed; verifying readback..."
+bash "${SCRIPT_DIR}/verify-repository-guardrails.sh" "$REPO" "$BRANCH"
+echo "Guardrails configured and verified. Review at: https://github.com/${REPO}/settings/branches"
