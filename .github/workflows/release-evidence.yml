@@ -2,13 +2,6 @@ name: Release Evidence
 
 on:
   pull_request:
-    paths:
-      - package.json
-      - package-lock.json
-      - deploy/cloudflare/package.json
-      - deploy/cloudflare/package-lock.json
-      - Dockerfile
-      - .github/workflows/release-evidence.yml
   push:
     branches: [main]
   workflow_dispatch:
