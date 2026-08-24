@@ -46,6 +46,11 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             deploy/cloudflare/package-lock.json
+      - name: Verify repository security invariants
+        run: |
+          node scripts/verify-action-pins.mjs
+          bash -n scripts/configure-repository-guardrails.sh
+          bash -n scripts/verify-repository-guardrails.sh
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run verify
       - run: npm audit --omit=dev --audit-level=high
