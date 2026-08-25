@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Estimate } from '../domain/types.js';
 import type { EstimateRepository } from '../persistence/repository.js';
 import type { Principal } from '../security/rbac.js';
 import { authorize } from '../security/rbac.js';
@@ -31,23 +32,21 @@ export class GovernedDecisionService {
     private readonly audit: AuditSink = new NoopAuditSink(),
   ) {}
 
-  private async context(principal: Principal, estimateId: string, decisionType: DecisionType) {
+  private async context(principal: Principal, estimateId: string, decisionType: DecisionType): Promise<Estimate> {
     authorize(principal, 'estimate:read', principal.tenantId);
     const estimate = await this.estimates.getById(principal.tenantId, estimateId);
     if (!estimate) throw new Error('estimate_not_found');
     const profile = await this.entitlements.get(principal, estimate.asset.assetClass);
     const resolved = resolveEntitlements({ enabled: profile.enabledFeatures, automationLevel: profile.automationLevel }, estimate.asset.assetClass);
     assertFeatureEnabled(resolved, FEATURE_BY_DECISION[decisionType]);
-    return { estimate, profile };
+    return estimate;
   }
 
-  private async persist<T>(principal: Principal, estimateId: string, decisionType: DecisionType, input: unknown, result: T): Promise<GovernedDecision<T>> {
-    const estimate = await this.estimates.getById(principal.tenantId, estimateId);
-    if (!estimate) throw new Error('estimate_not_found');
+  private async persist<T>(principal: Principal, estimate: Estimate, decisionType: DecisionType, input: unknown, result: T): Promise<GovernedDecision<T>> {
     const record: DecisionRecord = {
       tenantId: principal.tenantId,
       id: randomUUID(),
-      estimateId,
+      estimateId: estimate.id,
       estimateRevision: estimate.revision,
       decisionType,
       inputHash: hashIdempotencyRequest(input),
@@ -62,30 +61,30 @@ export class GovernedDecisionService {
       action: `decision.${decisionType}.created`,
       resourceType: 'estimate_decision',
       resourceId: saved.id,
-      metadata: { estimateId, estimateRevision: saved.estimateRevision, decisionType, inputHash: saved.inputHash },
+      metadata: { estimateId: estimate.id, estimateRevision: saved.estimateRevision, decisionType, inputHash: saved.inputHash },
     }));
     return { record: saved, result };
   }
 
   async optimizeParts(principal: Principal, estimateId: string, input: PartsDecisionInput): Promise<GovernedDecision<PartsOptimizationResult>> {
-    const { estimate } = await this.context(principal, estimateId, 'parts_optimization');
+    const estimate = await this.context(principal, estimateId, 'parts_optimization');
     if (input.policy.currency !== estimate.currency) throw new Error('decision_currency_mismatch');
     const result = optimizeParts(input.candidates, input.policy);
-    return this.persist(principal, estimateId, 'parts_optimization', input, result);
+    return this.persist(principal, estimate, 'parts_optimization', input, result);
   }
 
   async repairOrReplace(principal: Principal, estimateId: string, input: RepairReplaceDecisionInput): Promise<GovernedDecision<RepairReplaceDecision>> {
-    const { estimate } = await this.context(principal, estimateId, 'repair_replace');
+    const estimate = await this.context(principal, estimateId, 'repair_replace');
     if (input.policy.currency !== estimate.currency) throw new Error('decision_currency_mismatch');
     const result = decideRepairOrReplace(input.repair, input.replacement, input.policy);
-    return this.persist(principal, estimateId, 'repair_replace', input, result);
+    return this.persist(principal, estimate, 'repair_replace', input, result);
   }
 
   async totalLoss(principal: Principal, estimateId: string, input: TotalLossInput): Promise<GovernedDecision<TotalLossAnalysis>> {
-    const { estimate } = await this.context(principal, estimateId, 'total_loss');
+    const estimate = await this.context(principal, estimateId, 'total_loss');
     if (input.currency !== estimate.currency) throw new Error('decision_currency_mismatch');
     const result = analyzeTotalLoss(input);
-    return this.persist(principal, estimateId, 'total_loss', input, result);
+    return this.persist(principal, estimate, 'total_loss', input, result);
   }
 
   async list(principal: Principal, estimateId: string, limit = 100): Promise<DecisionRecord[]> {
