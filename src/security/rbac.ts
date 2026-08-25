@@ -14,7 +14,8 @@ export type Action =
   | 'supplement:submit'
   | 'supplement:approve'
   | 'provider:configure'
-  | 'rules:configure';
+  | 'rules:configure'
+  | 'features:configure';
 
 export type Principal = {
   userId: string;
@@ -22,7 +23,7 @@ export type Principal = {
   roles: Role[];
 };
 
-const allActions: Action[] = ['estimate:create','estimate:read','estimate:update','estimate:approve','estimate:void','estimate:export','evidence:create','evidence:read','supplement:create','supplement:update','supplement:submit','supplement:approve','provider:configure','rules:configure'];
+const allActions: Action[] = ['estimate:create','estimate:read','estimate:update','estimate:approve','estimate:void','estimate:export','evidence:create','evidence:read','supplement:create','supplement:update','supplement:submit','supplement:approve','provider:configure','rules:configure','features:configure'];
 
 const grants: Record<Role, ReadonlySet<Action>> = {
   platform_admin: new Set<Action>(allActions),
