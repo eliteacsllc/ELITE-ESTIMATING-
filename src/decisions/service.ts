@@ -16,7 +16,7 @@ import type { DecisionRecord, DecisionRecordRepository, DecisionType } from './r
 export type PartsDecisionInput = { candidates: PartCandidate[]; policy: PartsOptimizationPolicy };
 export type RepairReplaceDecisionInput = { repair: RepairOption; replacement: ReplaceOption; policy: RepairReplacePolicy };
 
-export type GovernedDecision<T> = { record: DecisionRecord; result: T };
+export type GovernedDecision<T> = { record: DecisionRecord; result: T; replayed: boolean };
 
 const FEATURE_BY_DECISION: Record<DecisionType, FeatureId> = {
   parts_optimization: 'parts_optimizer',
@@ -55,15 +55,17 @@ export class GovernedDecisionService {
       createdAt: new Date().toISOString(),
     };
     const saved = await this.decisions.create(record);
-    await this.audit.record(auditEvent({
-      tenantId: principal.tenantId,
-      actorId: principal.userId,
-      action: `decision.${decisionType}.created`,
-      resourceType: 'estimate_decision',
-      resourceId: saved.id,
-      metadata: { estimateId: estimate.id, estimateRevision: saved.estimateRevision, decisionType, inputHash: saved.inputHash },
-    }));
-    return { record: saved, result };
+    if (saved.created) {
+      await this.audit.record(auditEvent({
+        tenantId: principal.tenantId,
+        actorId: principal.userId,
+        action: `decision.${decisionType}.created`,
+        resourceType: 'estimate_decision',
+        resourceId: saved.record.id,
+        metadata: { estimateId: estimate.id, estimateRevision: saved.record.estimateRevision, decisionType, inputHash: saved.record.inputHash },
+      }));
+    }
+    return { record: saved.record, result: saved.record.result as T, replayed: !saved.created };
   }
 
   async optimizeParts(principal: Principal, estimateId: string, input: PartsDecisionInput): Promise<GovernedDecision<PartsOptimizationResult>> {
