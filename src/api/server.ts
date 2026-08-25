@@ -33,6 +33,7 @@ import { TenantEntitlementService } from '../platform/entitlement-service.js';
 import { InMemoryDecisionRecordRepository, PostgresDecisionRecordRepository, type DecisionRecordRepository } from '../decisions/repository.js';
 import { GovernedDecisionService } from '../decisions/service.js';
 import { handleDecisionHttp } from '../decisions/http.js';
+import { handleEstimateWorkflowHttp } from '../workflows/http.js';
 import { HttpMetrics, normalizeMetricRoute } from '../observability/metrics.js';
 import { evaluateOutboxHealth, outboxHealthPolicyFromEnv, renderOperationalMetrics } from '../observability/operational.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
@@ -294,6 +295,7 @@ const server = createServer(async (req, res) => {
     const parts = pathParts(req.url);
 
     if (await handleDecisionHttp({ req, res, actor, parts, url, service: decisionService, send, json })) return;
+    if (await handleEstimateWorkflowHttp({ req, res, actor, parts, service, send, json })) return;
 
     if (parts[0] === 'v1' && parts[1] === 'platform' && parts[2] === 'features') {
       if (parts.length === 3 && req.method === 'GET') return send(res, 200, await entitlementService.list(actor));
