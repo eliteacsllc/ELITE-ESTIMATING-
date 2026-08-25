@@ -6,7 +6,7 @@ import { EstimatingService } from '../application/estimating-service.js';
 import { InMemoryTenantFeatureProfileRepository } from '../platform/entitlement-repository.js';
 import { TenantEntitlementService } from '../platform/entitlement-service.js';
 import { InMemoryDecisionRecordRepository } from './repository.js';
-import { GovernedDecisionService } from './service.js';
+import { GovernedDecisionService, type RepairReplaceDecisionInput } from './service.js';
 
 const admin: Principal = { userId: 'admin', tenantId: 'tenant-a', roles: ['tenant_admin'] };
 const estimator: Principal = { userId: 'estimator', tenantId: 'tenant-a', roles: ['estimator'] };
@@ -36,33 +36,45 @@ test('disabled advanced feature rejects execution', async () => {
   }), /feature_not_entitled:parts_optimizer/);
 });
 
-test('entitled parts optimization persists a revision-bound decision record', async () => {
+test('entitled parts optimization persists a revision-bound decision and exact retry replays it', async () => {
   const { estimate, entitlements, decisions, service } = await setup();
   await entitlements.set(admin, { assetClass: 'passenger_vehicle', enabledFeatures: ['parts_optimizer'], automationLevel: 'assisted' });
-  const governed = await service.optimizeParts(estimator, estimate.id, {
+  const input = {
     candidates: [
-      { id: 'oem', description: 'panel', sourceType: 'new_oem', price: { amountMinor: 25000, currency: 'USD' }, leadTimeDays: 1, certification: 'OEM', warrantyMonths: 36, oemProcedureCompatible: true, provenance: [provenance] },
-      { id: 'recycled', description: 'panel', sourceType: 'recycled', price: { amountMinor: 15000, currency: 'USD' }, leadTimeDays: 3, conditionGrade: 'A', warrantyMonths: 6, oemProcedureCompatible: true, provenance: [provenance] },
+      { id: 'oem', description: 'panel', sourceType: 'new_oem' as const, price: { amountMinor: 25000, currency: 'USD' }, leadTimeDays: 1, certification: 'OEM', warrantyMonths: 36, oemProcedureCompatible: true, provenance: [provenance] },
+      { id: 'recycled', description: 'panel', sourceType: 'recycled' as const, price: { amountMinor: 15000, currency: 'USD' }, leadTimeDays: 3, conditionGrade: 'A', warrantyMonths: 6, oemProcedureCompatible: true, provenance: [provenance] },
     ],
-    policy: { currency: 'USD', allowedSourceTypes: ['new_oem','recycled'], requireOemProcedureCompatibility: true },
+    policy: { currency: 'USD', allowedSourceTypes: ['new_oem','recycled'] as const, requireOemProcedureCompatibility: true },
+  };
+  const first = await service.optimizeParts(estimator, estimate.id, input);
+  assert.equal(first.replayed, false);
+  assert.equal(first.record.estimateRevision, estimate.revision);
+  assert.equal(first.record.decisionType, 'parts_optimization');
+  assert.match(first.record.inputHash, /^[0-9a-f]{64}$/);
+  assert.ok(first.result.selected);
+
+  const replay = await service.optimizeParts(estimator, estimate.id, input);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.record.id, first.record.id);
+
+  const changed = await service.optimizeParts(estimator, estimate.id, {
+    ...input,
+    candidates: [{ ...input.candidates[0]!, price: { amountMinor: 26000, currency: 'USD' } }, input.candidates[1]!],
   });
-  assert.equal(governed.record.estimateRevision, estimate.revision);
-  assert.equal(governed.record.decisionType, 'parts_optimization');
-  assert.match(governed.record.inputHash, /^[0-9a-f]{64}$/);
-  assert.ok(governed.result.selected);
+  assert.equal(changed.replayed, false);
+  assert.notEqual(changed.record.id, first.record.id);
   const rows = await decisions.listByEstimate('tenant-a', estimate.id);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0]?.id, governed.record.id);
+  assert.equal(rows.length, 2);
 });
 
 test('repair-replace decision requires entitlement and estimate currency', async () => {
   const { estimate, entitlements, service } = await setup();
   await entitlements.set(admin, { assetClass: 'passenger_vehicle', enabledFeatures: ['repair_replace'], automationLevel: 'copilot' });
-  const input = {
+  const input: RepairReplaceDecisionInput = {
     repair: { laborHours: 5, laborRate: { amountMinor: 8000, currency: 'USD' }, safetyProcedureSatisfied: true, qualityRestorationFeasible: true, provenance: [provenance] },
     replacement: { part: { amountMinor: 70000, currency: 'USD' }, laborHours: 2, laborRate: { amountMinor: 8000, currency: 'USD' }, safetyProcedureSatisfied: true, provenance: [provenance] },
     policy: { currency: 'USD', repairCostRatioThreshold: 0.7 },
-  } as const;
+  };
   const result = await service.repairOrReplace(estimator, estimate.id, input);
   assert.equal(result.record.decisionType, 'repair_replace');
   await assert.rejects(() => service.repairOrReplace(estimator, estimate.id, {
