@@ -29,6 +29,7 @@ const requiredIndexes = [
   'mutation_idempotency_resource_idx',
   'rate_limit_buckets_last_seen_idx',
   'tenant_feature_profiles_updated_idx',
+  'estimate_decision_records_replay_idx',
   'estimate_decision_records_estimate_idx',
   'estimate_decision_records_type_idx',
 ] as const;
