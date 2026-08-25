@@ -1,7 +1,14 @@
 {
   "version": 1,
   "market": "REPLACE_WITH_MARKET",
-  "assetClasses": ["REPLACE_WITH_VALIDATED_ASSET_CLASS"],
+  "assetClasses": ["passenger_vehicle"],
+  "domainProfiles": [
+    {
+      "assetClass": "passenger_vehicle",
+      "enabledFeatures": ["collision"],
+      "automationLevel": "manual"
+    }
+  ],
   "dataRights": [
     {
       "provider": "REPLACE_WITH_LICENSED_PROVIDER",
@@ -18,6 +25,7 @@
       "descriptorHash": "REPLACE_WITH_64_CHAR_DESCRIPTOR_SHA256",
       "capabilities": ["REPLACE_WITH_CERTIFIED_CAPABILITY"],
       "regions": ["REPLACE_WITH_CERTIFIED_REGION"],
+      "assetClasses": ["passenger_vehicle"],
       "green": false
     }
   ],

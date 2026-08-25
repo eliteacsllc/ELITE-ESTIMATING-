@@ -5,6 +5,7 @@ export * from './connectors/contracts.js';
 export * from './connectors/conformance.js';
 export * from './connectors/adapter-base.js';
 export * from './connectors/production-certification.js';
+export * from './connectors/portfolio-certification.js';
 export * from './domains/registry.js';
 export * from './platform/features.js';
 export * from './platform/runtime.js';
