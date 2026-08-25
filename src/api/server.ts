@@ -28,6 +28,8 @@ import type { RegisterEvidenceInput } from '../evidence/types.js';
 import type { DamageGraph } from '../damage/graph.js';
 import { DamageGraphService } from '../damage/service.js';
 import { InMemoryDamageGraphRepository, PostgresDamageGraphRepository, type DamageGraphRepository } from '../damage/repository.js';
+import { InMemoryTenantFeatureProfileRepository, PostgresTenantFeatureProfileRepository, type TenantFeatureProfileRepository } from '../platform/entitlement-repository.js';
+import { TenantEntitlementService } from '../platform/entitlement-service.js';
 import { HttpMetrics, normalizeMetricRoute } from '../observability/metrics.js';
 import { evaluateOutboxHealth, outboxHealthPolicyFromEnv, renderOperationalMetrics } from '../observability/operational.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
@@ -59,6 +61,7 @@ const postgresDamageGraphs = databaseUrl ? new PostgresDamageGraphRepository(dat
 const postgresImportReceipts = databaseUrl ? new PostgresImportReceiptRepository(databaseUrl) : null;
 const postgresIdempotency = databaseUrl ? new PostgresIdempotencyRepository(databaseUrl) : null;
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
+const postgresEntitlements = databaseUrl ? new PostgresTenantFeatureProfileRepository(databaseUrl) : null;
 const memoryLifecycle = postgresOutbox ? null : new MemoryLifecycleSink();
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
@@ -67,6 +70,7 @@ const evidenceRepository: EvidenceRepository = postgresEvidence ?? new InMemoryE
 const damageGraphRepository: DamageGraphRepository = postgresDamageGraphs ?? new InMemoryDamageGraphRepository();
 const importReceiptRepository: ImportReceiptRepository = postgresImportReceipts ?? new InMemoryImportReceiptRepository();
 const idempotencyRepository: IdempotencyRepository = postgresIdempotency ?? new InMemoryIdempotencyRepository();
+const entitlementRepository: TenantFeatureProfileRepository = postgresEntitlements ?? new InMemoryTenantFeatureProfileRepository();
 const lifecycleSink: LifecycleSink = postgresOutbox ?? memoryLifecycle!;
 const lifecycleHealthSource = postgresOutbox ?? memoryLifecycle!;
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
@@ -77,6 +81,7 @@ const evidenceService = new EvidenceService(repository, evidenceRepository, blob
 const evidenceTransferService = blobStore ? new EvidenceTransferService(repository, evidenceRepository, blobStore) : null;
 const damageGraphService = new DamageGraphService(repository, damageGraphRepository);
 const importService = new EstimateImportService(service, repository, importReceiptRepository);
+const entitlementService = new TenantEntitlementService(entitlementRepository);
 const interchange = new EliteJsonInterchangeAdapter();
 const httpMetrics = new HttpMetrics();
 
@@ -166,6 +171,7 @@ async function readiness(): Promise<{
   damageGraphStorage: boolean;
   importReceiptStorage: boolean;
   idempotencyStorage: boolean;
+  entitlementStorage: boolean;
   idempotencyRequired: boolean;
   rateLimitConfigured: boolean;
   rateLimitDurable: boolean;
@@ -184,13 +190,14 @@ async function readiness(): Promise<{
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
-  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresIdempotency && postgresOutbox);
+  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresIdempotency && postgresOutbox && postgresEntitlements);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
   const lifecycleOutbox = Boolean(postgresOutbox) || allowEphemeral;
   const evidenceStorage = Boolean(postgresEvidence) || allowEphemeral;
   const damageGraphStorage = postgresDamageGraphs ? await postgresDamageGraphs.health().catch(() => false) : allowEphemeral;
   const importReceiptStorage = postgresImportReceipts ? await postgresImportReceipts.health().catch(() => false) : allowEphemeral;
   const idempotencyStorage = postgresIdempotency ? await postgresIdempotency.health().catch(() => false) : allowEphemeral;
+  const entitlementStorage = postgresEntitlements ? await postgresEntitlements.health().catch(() => false) : allowEphemeral;
   const blobStorageConfigured = Boolean(blobStore);
   const blobReady = !requireBlobStorage || blobStorageConfigured;
   const rateLimitConfigured = Boolean(rateLimiter);
@@ -202,7 +209,7 @@ async function readiness(): Promise<{
     ? evaluateOutboxHealth(outboxHealth, outboxHealthPolicy)
     : { healthy: false, reasons: ['outbox_health_unavailable'] };
   return {
-    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
     authConfigured,
     authMode,
     durableStorage,
@@ -212,6 +219,7 @@ async function readiness(): Promise<{
     damageGraphStorage,
     importReceiptStorage,
     idempotencyStorage,
+    entitlementStorage,
     idempotencyRequired: requireIdempotency,
     rateLimitConfigured,
     rateLimitDurable,
@@ -275,6 +283,21 @@ const server = createServer(async (req, res) => {
     }
     const url = requestUrl(req.url);
     const parts = pathParts(req.url);
+
+    if (parts[0] === 'v1' && parts[1] === 'platform' && parts[2] === 'features') {
+      if (parts.length === 3 && req.method === 'GET') return send(res, 200, await entitlementService.list(actor));
+      if (parts.length === 4 && parts[3]) {
+        if (req.method === 'GET') return send(res, 200, await entitlementService.get(actor, parts[3] as never));
+        if (req.method === 'PUT') {
+          const body = await json(req);
+          return send(res, 200, await entitlementService.set(actor, {
+            assetClass: parts[3] as never,
+            enabledFeatures: body.enabledFeatures as never,
+            automationLevel: body.automationLevel as never,
+          }));
+        }
+      }
+    }
 
     if (req.method === 'POST' && parts.join('/') === 'v1/imports/elite-json') {
       const result = await importService.importElite(actor, await json(req) as unknown as EliteEstimateEnvelope);
@@ -404,6 +427,7 @@ const shutdown = async () => {
   if (postgresImportReceipts) await postgresImportReceipts.close();
   if (postgresIdempotency) await postgresIdempotency.close();
   if (postgresOutbox) await postgresOutbox.close();
+  if (postgresEntitlements) await postgresEntitlements.close();
   if (auditSink instanceof PostgresAuditSink) await auditSink.close();
   if (rateLimiter?.close) await rateLimiter.close();
 };

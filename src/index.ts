@@ -9,6 +9,8 @@ export * from './connectors/portfolio-certification.js';
 export * from './domains/registry.js';
 export * from './platform/features.js';
 export * from './platform/runtime.js';
+export * from './platform/entitlement-repository.js';
+export * from './platform/entitlement-service.js';
 export * from './agents/registry.js';
 export * from './engine/estimate.js';
 export * from './engine/dependency.js';
