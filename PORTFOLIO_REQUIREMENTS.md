@@ -1,5 +1,7 @@
 # Portfolio Requirements Gate
 
+Primary role: **Vertical Product / R&D**
+
 Elite Estimating is the portfolio's multi-domain estimating and automotive/property intelligence platform and a primary InsurTech/AutoTech R&D commercialization asset.
 
 ## Required gates
