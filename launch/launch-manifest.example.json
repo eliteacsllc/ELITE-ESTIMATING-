@@ -11,6 +11,16 @@
       "approved": false
     }
   ],
+  "providerCertifications": [
+    {
+      "provider": "REPLACE_WITH_LICENSED_PROVIDER",
+      "certificationReference": "REPLACE_WITH_GREEN_CERTIFICATION_EVIDENCE",
+      "descriptorHash": "REPLACE_WITH_64_CHAR_DESCRIPTOR_SHA256",
+      "capabilities": ["REPLACE_WITH_CERTIFIED_CAPABILITY"],
+      "regions": ["REPLACE_WITH_CERTIFIED_REGION"],
+      "green": false
+    }
+  ],
   "safetyCoverage": [
     { "category": "structural", "source": "REPLACE_WITH_AUTHORITATIVE_SOURCE", "regions": ["REPLACE_WITH_REGION"], "approved": false },
     { "category": "restraint", "source": "REPLACE_WITH_AUTHORITATIVE_SOURCE", "regions": ["REPLACE_WITH_REGION"], "approved": false },
