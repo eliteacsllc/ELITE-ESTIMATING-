@@ -10,6 +10,10 @@ const operations = new Set<EstimateLine['operation']>([
   'demolish','install','detach_reset','other',
 ]);
 
+const guideSources = new Set(['motor_gte','motor_raced','oem_procedure','other']);
+const partBases = new Set(['new_oem','recycled_assembly','aftermarket','repaired_existing','none']);
+const workTimeBases = new Set(['database','footnote','estimator_override','manual_entry']);
+
 export function validateAssetIdentity(asset: AssetIdentity): string[] {
   const errors: string[] = [];
   if (!asset || !assetClasses.has(asset.assetClass)) errors.push('unsupported_asset_class');
@@ -43,6 +47,17 @@ export function validateEstimateLineInput(line: EstimateLine, estimateCurrency: 
   }
   if (line.aiConfidence !== undefined && (!Number.isFinite(line.aiConfidence) || line.aiConfidence < 0 || line.aiConfidence > 1)) errors.push(`invalid_ai_confidence:${line.id}`);
   if (!Array.isArray(line.provenance)) errors.push(`invalid_provenance:${line.id}`);
+  if (line.guide) {
+    if (!guideSources.has(line.guide.source)) errors.push(`invalid_guide_source:${line.id}`);
+    if (!partBases.has(line.guide.partBasis)) errors.push(`invalid_part_basis:${line.id}`);
+    if (!workTimeBases.has(line.guide.workTimeBasis)) errors.push(`invalid_work_time_basis:${line.id}`);
+    if (line.guide.revision !== undefined && line.guide.revision.length > 40) errors.push(`guide_revision_too_long:${line.id}`);
+    if (line.guide.originalLaborHours !== undefined && (!Number.isFinite(line.guide.originalLaborHours) || line.guide.originalLaborHours < 0 || line.guide.originalLaborHours > 100_000)) errors.push(`invalid_original_labor_hours:${line.id}`);
+    for (const values of [line.guide.footnoteRefs,line.guide.includedLineIds,line.guide.notIncludedLineIds,line.guide.requiredLineIds,line.guide.assemblyComponents]) {
+      if (values && (values.length > 200 || values.some((value) => !value.trim() || value.length > 300))) errors.push(`invalid_guide_reference:${line.id}`);
+    }
+    if (line.guide.overrideReason !== undefined && (!line.guide.overrideReason.trim() || line.guide.overrideReason.length > 2000)) errors.push(`invalid_override_reason:${line.id}`);
+  }
   return errors;
 }
 

@@ -8,6 +8,9 @@ import type { Principal } from '../security/rbac.js';
 import { authorize } from '../security/rbac.js';
 import type { CarrierRule } from '../rules/carrier.js';
 import { assertNoBlockingFindings, evaluateCarrierRules } from '../rules/carrier.js';
+import { assertNoMotorGuideBlockers } from '../rules/motor-guide.js';
+import type { RepairPlanningChecklist } from '../workflows/repair-planning.js';
+import { assertRepairPlanReady } from '../workflows/repair-planning.js';
 import type { AuditSink } from '../audit/audit.js';
 import { auditEvent, NoopAuditSink } from '../audit/audit.js';
 import type { LifecycleSink, LifecycleTopic } from '../integrations/outbox.js';
@@ -136,16 +139,33 @@ export class EstimatingService {
     return saved;
   }
 
+  async replaceRepairPlan(principal: Principal, id: string, repairPlan: RepairPlanningChecklist): Promise<Estimate> {
+    authorize(principal, 'estimate:update', principal.tenantId);
+    const current = await this.get(principal, id);
+    if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
+    const saved = await this.repository.save({ ...current, repairPlan: structuredClone(repairPlan), status: 'review', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
+    await this.record(principal, 'estimate.repair_plan_updated', saved);
+    await this.emit('estimate.lines_updated', saved, { repairPlanUpdated: true });
+    return saved;
+  }
+
   async approve(principal: Principal, id: string): Promise<Estimate> {
     authorize(principal, 'estimate:approve', principal.tenantId);
     const current = await this.get(principal, id);
     const errors = auditEstimateLines(current.lines);
     if (errors.length > 0) throw new Error(`estimate_audit_failed:${errors.join('|')}`);
     if (current.lines.some((line) => !line.humanApproved)) throw new Error('human_approval_required');
+    const motorFindings = assertNoMotorGuideBlockers(current.lines);
+    const requiresRepairPlan = current.lines.some((line) => line.guide !== undefined || line.safetyCritical === true);
+    let repairPlanFindingCount = 0;
+    if (requiresRepairPlan) {
+      if (!current.repairPlan) throw new Error('repair_plan_required');
+      repairPlanFindingCount = assertRepairPlanReady(current, current.repairPlan).length;
+    }
     const findings = evaluateCarrierRules(current, this.carrierRules);
     assertNoBlockingFindings(findings);
     const saved = await this.repository.save({ ...recalculate(current), status: 'approved' }, current.updatedAt);
-    await this.record(principal, 'estimate.approved', saved, { carrierFindingCount: findings.length });
+    await this.record(principal, 'estimate.approved', saved, { carrierFindingCount: findings.length, motorGuideFindingCount: motorFindings.length, repairPlanFindingCount });
     await this.emit('estimate.approved', saved, { totalMinor: saved.total.amountMinor, currency: saved.currency });
     return saved;
   }

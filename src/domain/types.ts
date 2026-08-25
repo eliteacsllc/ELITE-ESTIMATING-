@@ -75,6 +75,7 @@ export type EstimateLine = {
   aiConfidence?: number;
   humanApproved: boolean;
   provenance: SourceProvenance[];
+  guide?: import('../rules/motor-guide.js').MotorGuideContext;
 };
 
 export type Estimate = {
@@ -86,6 +87,7 @@ export type Estimate = {
   currency: string;
   jurisdiction: string;
   lines: EstimateLine[];
+  repairPlan?: import('../workflows/repair-planning.js').RepairPlanningChecklist;
   subtotal: Money;
   tax: Money;
   total: Money;
