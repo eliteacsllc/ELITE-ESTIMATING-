@@ -75,6 +75,7 @@ export type EstimateLine = {
   aiConfidence?: number;
   humanApproved: boolean;
   provenance: SourceProvenance[];
+  guide?: import('../rules/motor-guide.js').MotorGuideContext;
 };
 
 export type Estimate = {
