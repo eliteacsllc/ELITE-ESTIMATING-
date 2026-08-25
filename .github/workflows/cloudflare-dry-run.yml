@@ -12,6 +12,7 @@ on:
       - 'workers/**'
       - 'package.json'
       - 'bun.lock'
+      - 'bun.lockb'
       - 'pnpm-lock.yaml'
       - 'package-lock.json'
 
@@ -31,6 +32,23 @@ jobs:
         shell: bash
         run: |
           if [[ -f wrangler.toml || -f wrangler.json || -f wrangler.jsonc ]]; then echo 'enabled=true' >> "$GITHUB_OUTPUT"; else echo 'enabled=false' >> "$GITHUB_OUTPUT"; fi
+      - uses: oven-sh/setup-bun@v2
+        if: ${{ steps.cf.outputs.enabled == 'true' && hashFiles('bun.lock', 'bun.lockb') != '' }}
+      - name: Install dependencies from committed lockfile
+        if: steps.cf.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f bun.lock || -f bun.lockb ]]; then
+            bun install --frozen-lockfile
+          elif [[ -f pnpm-lock.yaml ]]; then
+            corepack enable
+            pnpm install --frozen-lockfile
+          elif [[ -f package-lock.json ]]; then
+            npm ci
+          elif [[ -f package.json ]]; then
+            echo 'No supported committed lockfile found; skipping dependency install.'
+          fi
       - name: Validate Worker bundle without deploying
         if: steps.cf.outputs.enabled == 'true'
         run: npx --yes wrangler@4 deploy --dry-run
