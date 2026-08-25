@@ -6,7 +6,7 @@ import { EstimatingService } from '../application/estimating-service.js';
 import { InMemoryTenantFeatureProfileRepository } from '../platform/entitlement-repository.js';
 import { TenantEntitlementService } from '../platform/entitlement-service.js';
 import { InMemoryDecisionRecordRepository } from './repository.js';
-import { GovernedDecisionService, type RepairReplaceDecisionInput } from './service.js';
+import { GovernedDecisionService, type PartsDecisionInput, type RepairReplaceDecisionInput } from './service.js';
 
 const admin: Principal = { userId: 'admin', tenantId: 'tenant-a', roles: ['tenant_admin'] };
 const estimator: Principal = { userId: 'estimator', tenantId: 'tenant-a', roles: ['estimator'] };
@@ -39,12 +39,12 @@ test('disabled advanced feature rejects execution', async () => {
 test('entitled parts optimization persists a revision-bound decision and exact retry replays it', async () => {
   const { estimate, entitlements, decisions, service } = await setup();
   await entitlements.set(admin, { assetClass: 'passenger_vehicle', enabledFeatures: ['parts_optimizer'], automationLevel: 'assisted' });
-  const input = {
+  const input: PartsDecisionInput = {
     candidates: [
-      { id: 'oem', description: 'panel', sourceType: 'new_oem' as const, price: { amountMinor: 25000, currency: 'USD' }, leadTimeDays: 1, certification: 'OEM', warrantyMonths: 36, oemProcedureCompatible: true, provenance: [provenance] },
-      { id: 'recycled', description: 'panel', sourceType: 'recycled' as const, price: { amountMinor: 15000, currency: 'USD' }, leadTimeDays: 3, conditionGrade: 'A', warrantyMonths: 6, oemProcedureCompatible: true, provenance: [provenance] },
+      { id: 'oem', description: 'panel', sourceType: 'new_oem', price: { amountMinor: 25000, currency: 'USD' }, leadTimeDays: 1, certification: 'OEM', warrantyMonths: 36, oemProcedureCompatible: true, provenance: [provenance] },
+      { id: 'recycled', description: 'panel', sourceType: 'recycled', price: { amountMinor: 15000, currency: 'USD' }, leadTimeDays: 3, conditionGrade: 'A', warrantyMonths: 6, oemProcedureCompatible: true, provenance: [provenance] },
     ],
-    policy: { currency: 'USD', allowedSourceTypes: ['new_oem','recycled'] as const, requireOemProcedureCompatibility: true },
+    policy: { currency: 'USD', allowedSourceTypes: ['new_oem','recycled'], requireOemProcedureCompatibility: true },
   };
   const first = await service.optimizeParts(estimator, estimate.id, input);
   assert.equal(first.replayed, false);
@@ -57,12 +57,13 @@ test('entitled parts optimization persists a revision-bound decision and exact r
   assert.equal(replay.replayed, true);
   assert.equal(replay.record.id, first.record.id);
 
-  const changed = await service.optimizeParts(estimator, estimate.id, {
+  const changed: PartsDecisionInput = {
     ...input,
     candidates: [{ ...input.candidates[0]!, price: { amountMinor: 26000, currency: 'USD' } }, input.candidates[1]!],
-  });
-  assert.equal(changed.replayed, false);
-  assert.notEqual(changed.record.id, first.record.id);
+  };
+  const changedResult = await service.optimizeParts(estimator, estimate.id, changed);
+  assert.equal(changedResult.replayed, false);
+  assert.notEqual(changedResult.record.id, first.record.id);
   const rows = await decisions.listByEstimate('tenant-a', estimate.id);
   assert.equal(rows.length, 2);
 });
