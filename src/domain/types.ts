@@ -87,6 +87,7 @@ export type Estimate = {
   currency: string;
   jurisdiction: string;
   lines: EstimateLine[];
+  repairPlan?: import('../workflows/repair-planning.js').RepairPlanningChecklist;
   subtotal: Money;
   tax: Money;
   total: Money;
