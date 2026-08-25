@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 
 export type LaunchDataRight = { provider: string; capabilities: string[]; regions: string[]; agreementReference: string; approved: boolean };
+export type LaunchProviderCertification = { provider: string; certificationReference: string; descriptorHash: string; capabilities: string[]; regions: string[]; green: boolean };
 export type LaunchSafetyCoverage = { category: 'structural' | 'restraint' | 'adas' | 'ev_hv' | 'property_code' | 'other'; source: string; regions: string[]; approved: boolean };
 export type LaunchManifest = {
-  version: 1; market: string; assetClasses: string[]; dataRights: LaunchDataRight[]; safetyCoverage: LaunchSafetyCoverage[];
+  version: 1; market: string; assetClasses: string[]; dataRights: LaunchDataRight[]; providerCertifications: LaunchProviderCertification[]; safetyCoverage: LaunchSafetyCoverage[];
   privacyReviewReference: string; privacyApproved: boolean; securityReviewReference: string; securityApproved: boolean;
   pilotEvidenceReference: string; pilotValidated: boolean; backupRestoreEvidenceReference: string; rpoMinutes: number; rtoMinutes: number;
 };
@@ -37,11 +38,16 @@ function postgresTransportSecure(value: string | undefined): boolean {
 }
 function stringArray(value: unknown): value is string[] { return Array.isArray(value) && value.every(item => typeof item === 'string' && item.trim().length > 0); }
 function object(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
+function covers(required: string[], certified: string[]): boolean {
+  const available = new Set(certified.map(value => value.toUpperCase()));
+  return required.every(value => available.has(value.toUpperCase()) || available.has('*'));
+}
 
 export function assertLaunchManifest(value: unknown): asserts value is LaunchManifest {
   if (!object(value) || value.version !== 1) throw new Error('invalid_launch_manifest_version');
   if (typeof value.market !== 'string' || !stringArray(value.assetClasses)) throw new Error('invalid_launch_manifest_product');
   if (!Array.isArray(value.dataRights) || !value.dataRights.every(item => object(item) && typeof item.provider === 'string' && stringArray(item.capabilities) && stringArray(item.regions) && typeof item.agreementReference === 'string' && typeof item.approved === 'boolean')) throw new Error('invalid_launch_manifest_data_rights');
+  if (!Array.isArray(value.providerCertifications) || !value.providerCertifications.every(item => object(item) && typeof item.provider === 'string' && typeof item.certificationReference === 'string' && typeof item.descriptorHash === 'string' && stringArray(item.capabilities) && stringArray(item.regions) && typeof item.green === 'boolean')) throw new Error('invalid_launch_manifest_provider_certifications');
   const safetyCategories = new Set(['structural','restraint','adas','ev_hv','property_code','other']);
   if (!Array.isArray(value.safetyCoverage) || !value.safetyCoverage.every(item => object(item) && typeof item.category === 'string' && safetyCategories.has(item.category) && typeof item.source === 'string' && stringArray(item.regions) && typeof item.approved === 'boolean')) throw new Error('invalid_launch_manifest_safety');
   for (const key of ['privacyReviewReference','securityReviewReference','pilotEvidenceReference','backupRestoreEvidenceReference'] as const) if (typeof value[key] !== 'string') throw new Error(`invalid_launch_manifest_${key}`);
@@ -72,7 +78,21 @@ export function evaluateLaunchReadiness(manifest: LaunchManifest, env: NodeJS.Pr
   if (!productionValue(env.ELITE_CLAIMS_WEBHOOK_SECRET) || (env.ELITE_CLAIMS_WEBHOOK_SECRET?.length ?? 0) < 32) block('claims_integration', 'Claims Management webhook secret must be a strong non-placeholder value');
   if (!nonNegativeIntegerString(env.ELITE_OUTBOX_MAX_PENDING) || !nonNegativeIntegerString(env.ELITE_OUTBOX_MAX_AGE_SECONDS) || !nonNegativeIntegerString(env.ELITE_OUTBOX_MAX_EXHAUSTED)) block('claims_integration', 'production outbox health thresholds must be non-negative integers');
   if (manifest.dataRights.length === 0) block('data_rights', 'at least one lawful data-source agreement record is required');
-  for (const right of manifest.dataRights) if (!right.provider.trim() || right.capabilities.length === 0 || right.regions.length === 0 || !right.agreementReference.trim() || !right.approved) block('data_rights', `incomplete or unapproved data-rights record for ${right.provider || 'unnamed provider'}`);
+  for (const right of manifest.dataRights) {
+    if (!right.provider.trim() || right.capabilities.length === 0 || right.regions.length === 0 || !right.agreementReference.trim() || !right.approved) {
+      block('data_rights', `incomplete or unapproved data-rights record for ${right.provider || 'unnamed provider'}`);
+      continue;
+    }
+    const certification = manifest.providerCertifications.find(item => item.provider === right.provider && item.green);
+    if (!certification) {
+      block('provider_certification', `green production provider certification is required for ${right.provider}`);
+      continue;
+    }
+    if (!certification.certificationReference.trim()) block('provider_certification', `certification evidence reference is required for ${right.provider}`);
+    if (!/^[0-9a-f]{64}$/i.test(certification.descriptorHash)) block('provider_certification', `valid descriptor hash is required for ${right.provider}`);
+    if (!covers(right.capabilities, certification.capabilities)) block('provider_certification', `certification does not cover all approved capabilities for ${right.provider}`);
+    if (!covers(right.regions, certification.regions)) block('provider_certification', `certification does not cover all approved regions for ${right.provider}`);
+  }
   const requiredSafety = new Set(['structural', 'restraint', 'adas', 'ev_hv']);
   for (const coverage of manifest.safetyCoverage) if (coverage.approved && coverage.source.trim() && coverage.regions.length > 0) requiredSafety.delete(coverage.category);
   for (const category of requiredSafety) block('safety', `approved ${category} safety coverage is required`);

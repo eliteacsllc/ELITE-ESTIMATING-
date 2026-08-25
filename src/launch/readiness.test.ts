@@ -8,6 +8,7 @@ const manifest: LaunchManifest = {
   market: 'US',
   assetClasses: ['passenger_vehicle'],
   dataRights: [{ provider: 'licensed-provider', capabilities: ['parts','labor'], regions: ['US'], agreementReference: 'contract-123', approved: true }],
+  providerCertifications: [{ provider: 'licensed-provider', certificationReference: 'provider-cert-2026-001', descriptorHash: 'a'.repeat(64), capabilities: ['parts','labor'], regions: ['US'], green: true }],
   safetyCoverage: [
     { category: 'structural', source: 'OEM', regions: ['US'], approved: true },
     { category: 'restraint', source: 'OEM', regions: ['US'], approved: true },
@@ -45,6 +46,19 @@ test('remote PostgreSQL without TLS blocks launch', () => {
 test('localhost PostgreSQL remains valid for controlled local verification', () => {
   const result = evaluateLaunchReadiness(manifest, { ...env, DATABASE_URL: 'postgresql://127.0.0.1:5432/elite' });
   assert.equal(result.green, true);
+});
+
+test('missing provider certification blocks launch even with an approved agreement', () => {
+  const result = evaluateLaunchReadiness({ ...manifest, providerCertifications: [] }, env);
+  assert.equal(result.green, false);
+  assert.ok(result.findings.some(f => f.gate === 'provider_certification'));
+});
+
+test('provider certification must cover approved capability and region scope', () => {
+  const providerCertifications = [{ ...manifest.providerCertifications[0]!, capabilities: ['parts'], regions: ['CA'] }];
+  const result = evaluateLaunchReadiness({ ...manifest, providerCertifications }, env);
+  assert.equal(result.green, false);
+  assert.ok(result.findings.filter(f => f.gate === 'provider_certification').length >= 1);
 });
 
 test('missing ADAS evidence blocks launch', () => {
