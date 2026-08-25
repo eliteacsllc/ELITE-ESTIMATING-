@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS estimate_decision_records (
   CONSTRAINT estimate_decision_records_input_hash_check CHECK (input_hash ~ '^[0-9a-f]{64}$')
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS estimate_decision_records_replay_idx
+  ON estimate_decision_records (tenant_id, estimate_id, estimate_revision, decision_type, input_hash);
+
 CREATE INDEX IF NOT EXISTS estimate_decision_records_estimate_idx
   ON estimate_decision_records (tenant_id, estimate_id, created_at DESC);
 
