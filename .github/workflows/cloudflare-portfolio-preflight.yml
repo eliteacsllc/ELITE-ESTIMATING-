@@ -1,0 +1,22 @@
+name: Cloudflare Portfolio Preflight
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: cloudflare-preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run non-destructive Cloudflare preflight
+        run: node scripts/portfolio-cloudflare-preflight.mjs
