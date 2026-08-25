@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+const failures=[];const warnings=[];const pass=[];const required=['README.md','PORTFOLIO_REQUIREMENTS.md','INSTITUTIONAL_READINESS.md'];
+for(const f of required)fs.existsSync(f)?pass.push(`${f} present`):failures.push(`${f} missing`);
+if(fs.existsSync('.env'))failures.push('Root .env must not be committed/present for release evidence');else pass.push('No root .env');
+if(fs.existsSync('package.json')&&!['package-lock.json','pnpm-lock.yaml','yarn.lock'].some(fs.existsSync))failures.push('Node lockfile missing');
+const docs=required.filter(fs.existsSync).map(f=>fs.readFileSync(f,'utf8')).join('\n');
+const roles=['Core Platform','Vertical Product','Infrastructure','Distribution','Growth','R&D','Commercial Validation','Legacy','Merge','Sunset','Marketplace'];
+if(roles.some(r=>docs.toLowerCase().includes(r.toLowerCase())))pass.push('Portfolio role classified');else failures.push('Portfolio role classification not found');
+if(/\bUNCLASSIFIED\b/i.test(docs))failures.push('Repository remains UNCLASSIFIED');
+for(const p of [/\b100% accurate\b/i,/\berror[- ]free AI\b/i,/\bguaranteed accuracy\b/i,/\bfully autonomous with no human/i])if(p.test(docs))failures.push(`Unsupported absolute claim detected: ${p}`);
+if(!/production/i.test(docs))warnings.push('Production evidence requirements not explicit');
+if(!/security/i.test(docs))warnings.push('Security requirements not explicit');
+if(!/(customer|commercial|revenue)/i.test(docs))warnings.push('Commercial/customer evidence requirements not explicit');
+if(!/(IP|intellectual property|data rights)/i.test(docs))warnings.push('IP/data-rights requirements not explicit');
+console.log(JSON.stringify({status:failures.length?'BLOCKED':warnings.length?'PASS_WITH_WARNINGS':'PASS',pass,warnings,failures},null,2));
+if(failures.length)process.exit(1);
