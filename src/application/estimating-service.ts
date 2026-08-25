@@ -8,6 +8,7 @@ import type { Principal } from '../security/rbac.js';
 import { authorize } from '../security/rbac.js';
 import type { CarrierRule } from '../rules/carrier.js';
 import { assertNoBlockingFindings, evaluateCarrierRules } from '../rules/carrier.js';
+import { assertNoMotorGuideBlockers } from '../rules/motor-guide.js';
 import type { AuditSink } from '../audit/audit.js';
 import { auditEvent, NoopAuditSink } from '../audit/audit.js';
 import type { LifecycleSink, LifecycleTopic } from '../integrations/outbox.js';
@@ -142,10 +143,11 @@ export class EstimatingService {
     const errors = auditEstimateLines(current.lines);
     if (errors.length > 0) throw new Error(`estimate_audit_failed:${errors.join('|')}`);
     if (current.lines.some((line) => !line.humanApproved)) throw new Error('human_approval_required');
+    const motorFindings = assertNoMotorGuideBlockers(current.lines);
     const findings = evaluateCarrierRules(current, this.carrierRules);
     assertNoBlockingFindings(findings);
     const saved = await this.repository.save({ ...recalculate(current), status: 'approved' }, current.updatedAt);
-    await this.record(principal, 'estimate.approved', saved, { carrierFindingCount: findings.length });
+    await this.record(principal, 'estimate.approved', saved, { carrierFindingCount: findings.length, motorGuideFindingCount: motorFindings.length });
     await this.emit('estimate.approved', saved, { totalMinor: saved.total.amountMinor, currency: saved.currency });
     return saved;
   }
