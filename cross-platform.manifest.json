@@ -13,7 +13,8 @@
     "sharedClient": "vite-static-client-source-ready",
     "mobileShell": "capacitor-8.5.0-dist-client",
     "desktopShell": "tauri-2-dist-client",
-    "secureStorage": "required-before-authenticated-native-release",
+    "secureStorage": "required",
+    "secureStorageStatus": "binding-pending-before-authenticated-native-release",
     "cameraAndFiles": "html-capture-and-file-input-source-ready-native-permission-verification-pending",
     "apiTransport": "VITE_ESTIMATING_API_ORIGIN-source-ready-authenticated-flow-pending",
     "buildEvidence": "required-before-supported"
