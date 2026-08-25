@@ -1,0 +1,39 @@
+name: Cloudflare Dry Run
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'wrangler.toml'
+      - 'wrangler.json'
+      - 'wrangler.jsonc'
+      - 'src/**'
+      - 'worker/**'
+      - 'workers/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'pnpm-lock.yaml'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Detect Cloudflare deployment
+        id: cf
+        shell: bash
+        run: |
+          if [[ -f wrangler.toml || -f wrangler.json || -f wrangler.jsonc ]]; then echo 'enabled=true' >> "$GITHUB_OUTPUT"; else echo 'enabled=false' >> "$GITHUB_OUTPUT"; fi
+      - name: Validate Worker bundle without deploying
+        if: steps.cf.outputs.enabled == 'true'
+        run: npx --yes wrangler@4 deploy --dry-run
+      - name: Record non-Cloudflare repo
+        if: steps.cf.outputs.enabled != 'true'
+        run: echo 'No root Wrangler config; Cloudflare deployment dry-run is not applicable.'
