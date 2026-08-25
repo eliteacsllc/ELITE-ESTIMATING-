@@ -19,14 +19,42 @@ const token = sign({
   roles: ['tenant_admin'],
   exp: Math.floor(Date.now() / 1000) + 600,
 });
+const estimatorToken = sign({
+  userId: 'ci-http-estimator',
+  tenantId: 'ci-http-smoke-tenant',
+  roles: ['estimator'],
+  exp: Math.floor(Date.now() / 1000) + 600,
+});
 const base = `http://127.0.0.1:${port}`;
 const authHeaders = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+const estimatorHeaders = { authorization: `Bearer ${estimatorToken}`, 'content-type': 'application/json' };
 
 async function expectJson(response: Response, status: number): Promise<Record<string, unknown>> {
   const text = await response.text();
   assert.equal(response.status, status, `expected HTTP ${status}, received ${response.status}: ${text}`);
   return text ? JSON.parse(text) as Record<string, unknown> : {};
 }
+
+const featureProfile = await expectJson(await fetch(`${base}/v1/platform/features/passenger_vehicle`, {
+  method: 'PUT',
+  headers: authHeaders,
+  body: JSON.stringify({ enabledFeatures: ['motor_raced', 'adas_diagnostics'], automationLevel: 'copilot' }),
+}), 200);
+assert.equal(featureProfile.automationLevel, 'copilot');
+assert.ok(Array.isArray(featureProfile.enabledFeatures));
+assert.ok((featureProfile.enabledFeatures as unknown[]).includes('labor_intelligence'));
+assert.ok((featureProfile.enabledFeatures as unknown[]).includes('oem_procedures'));
+
+const readableProfile = await expectJson(await fetch(`${base}/v1/platform/features/passenger_vehicle`, {
+  headers: estimatorHeaders,
+}), 200);
+assert.equal(readableProfile.automationLevel, 'copilot');
+
+await expectJson(await fetch(`${base}/v1/platform/features/passenger_vehicle`, {
+  method: 'PUT',
+  headers: estimatorHeaders,
+  body: JSON.stringify({ enabledFeatures: [], automationLevel: 'manual' }),
+}), 403);
 
 const estimateKey = 'ci-estimate-idempotency-0001';
 const estimateBody = JSON.stringify({
@@ -88,4 +116,4 @@ const replaySupplement = await expectJson(replaySupplementResponse, 200);
 assert.equal(replaySupplementResponse.headers.get('idempotency-replayed'), 'true');
 assert.equal(replaySupplement.id, firstSupplement.id);
 
-console.log('HTTP idempotency smoke passed');
+console.log('HTTP idempotency and tenant entitlement smoke passed');
