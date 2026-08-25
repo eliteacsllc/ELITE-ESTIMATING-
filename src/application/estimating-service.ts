@@ -10,9 +10,9 @@ import type { CarrierRule } from '../rules/carrier.js';
 import { assertNoBlockingFindings, evaluateCarrierRules } from '../rules/carrier.js';
 import { assertNoMotorGuideBlockers } from '../rules/motor-guide.js';
 import type { RepairPlanningChecklist } from '../workflows/repair-planning.js';
-import { assertRepairPlanReady } from '../workflows/repair-planning.js';
-import type { DomainWorkflowState } from '../workflows/domain-workflow.js';
-import { assertDomainWorkflowComplete } from '../workflows/domain-workflow.js';
+import { assertRepairPlanReady, assertRepairPlanningChecklist } from '../workflows/repair-planning.js';
+import type { DomainWorkflowState, UpdateDomainWorkflowStepInput } from '../workflows/domain-workflow.js';
+import { assertDomainWorkflowComplete, createDomainWorkflow, updateDomainWorkflowStep } from '../workflows/domain-workflow.js';
 import type { AuditSink } from '../audit/audit.js';
 import { auditEvent, NoopAuditSink } from '../audit/audit.js';
 import type { LifecycleSink, LifecycleTopic } from '../integrations/outbox.js';
@@ -27,6 +27,8 @@ export type CreateEstimateInput = {
   currency: string;
   jurisdiction: string;
 };
+
+export type UpdateEstimateDomainWorkflowStepInput = Omit<UpdateDomainWorkflowStepInput, 'completedBy' | 'completedAt'>;
 
 function money(amountMinor: number, currency: string): Money { return { amountMinor, currency }; }
 
@@ -97,11 +99,46 @@ export class EstimatingService {
 
   async replaceRepairPlan(principal: Principal, id: string, repairPlan: RepairPlanningChecklist): Promise<Estimate> {
     authorize(principal, 'estimate:update', principal.tenantId);
+    assertRepairPlanningChecklist(repairPlan);
     const current = await this.get(principal, id);
     if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
     const saved = await this.repository.save({ ...current, repairPlan: structuredClone(repairPlan), status: 'review', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
     await this.record(principal, 'estimate.repair_plan_updated', saved);
     await this.emit('estimate.lines_updated', saved, { repairPlanUpdated: true });
+    return saved;
+  }
+
+  async initializeDomainWorkflow(principal: Principal, id: string): Promise<Estimate> {
+    authorize(principal, 'estimate:update', principal.tenantId);
+    const current = await this.get(principal, id);
+    if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
+    if (current.domainWorkflow) return current;
+    const domainWorkflow = createDomainWorkflow(current.asset);
+    const saved = await this.repository.save({ ...current, domainWorkflow, status: 'review', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
+    await this.record(principal, 'estimate.domain_workflow_initialized', saved, { domain: domainWorkflow.domain });
+    await this.emit('estimate.lines_updated', saved, { domainWorkflowInitialized: true, domain: domainWorkflow.domain });
+    return saved;
+  }
+
+  async updateDomainWorkflowStep(principal: Principal, id: string, input: UpdateEstimateDomainWorkflowStepInput): Promise<Estimate> {
+    authorize(principal, 'estimate:update', principal.tenantId);
+    const current = await this.get(principal, id);
+    if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
+    if (!current.domainWorkflow) throw new Error('domain_workflow_not_initialized');
+    if (!input || typeof input !== 'object' || typeof input.stepId !== 'string' || !input.stepId.trim()) throw new Error('invalid_domain_workflow_step');
+    if (!['pending','complete','not_applicable'].includes(input.status)) throw new Error('invalid_domain_workflow_status');
+    if (input.evidenceRefs !== undefined && (!Array.isArray(input.evidenceRefs) || !input.evidenceRefs.every(value => typeof value === 'string'))) throw new Error('invalid_domain_workflow_evidence_refs');
+    if (input.note !== undefined && typeof input.note !== 'string') throw new Error('invalid_domain_workflow_note');
+    const domainWorkflow = updateDomainWorkflowStep(current.domainWorkflow, {
+      stepId: input.stepId.trim(),
+      status: input.status,
+      ...(input.evidenceRefs ? { evidenceRefs: input.evidenceRefs } : {}),
+      ...(input.note !== undefined ? { note: input.note } : {}),
+      ...((input.status === 'complete' || input.status === 'not_applicable') ? { completedBy: principal.userId } : {}),
+    });
+    const saved = await this.repository.save({ ...current, domainWorkflow, status: 'review', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
+    await this.record(principal, 'estimate.domain_workflow_step_updated', saved, { domain: domainWorkflow.domain, stepId: input.stepId, stepStatus: input.status });
+    await this.emit('estimate.lines_updated', saved, { domainWorkflowUpdated: true, domain: domainWorkflow.domain, stepId: input.stepId });
     return saved;
   }
 

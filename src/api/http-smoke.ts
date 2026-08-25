@@ -133,6 +133,73 @@ const decisionHistory = await expectJson(await fetch(`${base}/v1/estimates/${est
 assert.ok(Array.isArray(decisionHistory));
 assert.equal(decisionHistory.length, 1);
 
+const workflowEstimateResponse = await fetch(`${base}/v1/estimates`, {
+  method: 'POST',
+  headers: { ...estimatorHeaders, 'idempotency-key': 'ci-workflow-estimate-0001' },
+  body: JSON.stringify({
+    asset: { assetClass: 'passenger_vehicle', vin: '1HGCM82633A004353' },
+    locale: 'en-US', currency: 'USD', jurisdiction: 'US',
+  }),
+});
+const workflowEstimate = await expectJson(workflowEstimateResponse, 201);
+const workflowEstimateId = String(workflowEstimate.id);
+
+const emptyWorkflow = await expectJson(await fetch(`${base}/v1/estimates/${workflowEstimateId}/domain-workflow`, {
+  headers: estimatorHeaders,
+}), 200);
+assert.equal(emptyWorkflow.domainWorkflow, null);
+
+const initializedWorkflowEstimate = await expectJson(await fetch(`${base}/v1/estimates/${workflowEstimateId}/domain-workflow`, {
+  method: 'POST', headers: estimatorHeaders,
+}), 200);
+const initializedWorkflow = initializedWorkflowEstimate.domainWorkflow as Record<string, unknown>;
+assert.equal(initializedWorkflow.domain, 'collision');
+assert.ok(Array.isArray(initializedWorkflow.steps));
+assert.equal((initializedWorkflow.steps as Array<Record<string, unknown>>)[0]?.id, 'blueprint');
+
+const updatedWorkflowEstimate = await expectJson(await fetch(`${base}/v1/estimates/${workflowEstimateId}/domain-workflow/steps`, {
+  method: 'PATCH',
+  headers: estimatorHeaders,
+  body: JSON.stringify({
+    stepId: 'blueprint', status: 'complete', evidenceRefs: ['evidence-123', 'evidence-123'],
+    note: 'CI blueprint complete', completedBy: 'forged-user', completedAt: '2000-01-01T00:00:00.000Z',
+  }),
+}), 200);
+const updatedWorkflow = updatedWorkflowEstimate.domainWorkflow as Record<string, unknown>;
+const blueprintStep = (updatedWorkflow.steps as Array<Record<string, unknown>>).find(step => step.id === 'blueprint');
+assert.equal(blueprintStep?.completedBy, 'ci-http-estimator');
+assert.notEqual(blueprintStep?.completedAt, '2000-01-01T00:00:00.000Z');
+assert.deepEqual(blueprintStep?.evidenceRefs, ['evidence-123']);
+
+await expectJson(await fetch(`${base}/v1/estimates/${workflowEstimateId}/repair-plan`, {
+  method: 'PUT', headers: estimatorHeaders, body: JSON.stringify({ damageDiscoveryComplete: true }),
+}), 400);
+
+const repairPlan = {
+  damageDiscoveryComplete: true,
+  teardownBlueprintComplete: true,
+  hiddenDamageReviewed: true,
+  partsIdentified: true,
+  oneTimeUseItemsIdentified: true,
+  oemProceduresReviewed: true,
+  structuralRequirementsResolved: true,
+  adasRequirementsResolved: true,
+  evHvRequirementsResolved: true,
+  requiredToolsEquipmentConfirmed: true,
+  technicianCapabilityConfirmed: true,
+  subletOperationsIdentified: true,
+  preRepairScanResolved: true,
+  calibrationPlanResolved: true,
+  postRepairScanResolved: true,
+  finalQcPlanResolved: true,
+  testDriveOrFunctionalValidationResolved: true,
+  notes: 'CI repair plan',
+};
+const workflowWithRepairPlan = await expectJson(await fetch(`${base}/v1/estimates/${workflowEstimateId}/repair-plan`, {
+  method: 'PUT', headers: estimatorHeaders, body: JSON.stringify(repairPlan),
+}), 200);
+assert.deepEqual(workflowWithRepairPlan.repairPlan, repairPlan);
+
 await expectJson(await fetch(`${base}/v1/estimates/${estimateId}/approve`, {
   method: 'POST',
   headers: authHeaders,
@@ -155,4 +222,4 @@ const replaySupplement = await expectJson(replaySupplementResponse, 200);
 assert.equal(replaySupplementResponse.headers.get('idempotency-replayed'), 'true');
 assert.equal(replaySupplement.id, firstSupplement.id);
 
-console.log('HTTP idempotency, tenant entitlement, and governed decision smoke passed');
+console.log('HTTP idempotency, entitlement, governed decision, and workflow hardening smoke passed');

@@ -27,6 +27,20 @@ export type RepairPlanningFinding = {
   message: string;
 };
 
+const BOOLEAN_FIELDS = [
+  'damageDiscoveryComplete','teardownBlueprintComplete','hiddenDamageReviewed','partsIdentified','oneTimeUseItemsIdentified',
+  'oemProceduresReviewed','structuralRequirementsResolved','adasRequirementsResolved','evHvRequirementsResolved',
+  'requiredToolsEquipmentConfirmed','technicianCapabilityConfirmed','subletOperationsIdentified','preRepairScanResolved',
+  'calibrationPlanResolved','postRepairScanResolved','finalQcPlanResolved','testDriveOrFunctionalValidationResolved',
+] as const;
+
+export function assertRepairPlanningChecklist(value: unknown): asserts value is RepairPlanningChecklist {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid_repair_plan');
+  const record = value as Record<string, unknown>;
+  for (const field of BOOLEAN_FIELDS) if (typeof record[field] !== 'boolean') throw new Error(`invalid_repair_plan:${field}`);
+  if (record.notes !== undefined && typeof record.notes !== 'string') throw new Error('invalid_repair_plan:notes');
+}
+
 export function auditRepairPlan(estimate: Estimate, checklist: RepairPlanningChecklist): RepairPlanningFinding[] {
   const findings: RepairPlanningFinding[] = [];
   const require = (ok: boolean, code: string, message: string) => {
