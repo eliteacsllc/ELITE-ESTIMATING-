@@ -15,6 +15,7 @@ const requiredTables = [
   'estimate_import_receipts',
   'mutation_idempotency_receipts',
   'rate_limit_buckets',
+  'tenant_feature_profiles',
 ] as const;
 
 const requiredIndexes = [
@@ -26,6 +27,7 @@ const requiredIndexes = [
   'mutation_idempotency_expiry_idx',
   'mutation_idempotency_resource_idx',
   'rate_limit_buckets_last_seen_idx',
+  'tenant_feature_profiles_updated_idx',
 ] as const;
 
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });
@@ -40,7 +42,7 @@ try {
   }
 
   const migrationCount = await pool.query('SELECT COUNT(*)::int AS count FROM schema_migrations');
-  assert.ok(Number(migrationCount.rows[0]?.count ?? 0) >= 9, 'expected at least nine applied migrations');
+  assert.ok(Number(migrationCount.rows[0]?.count ?? 0) >= 10, 'expected at least ten applied migrations');
 
   const orphanEvidence = await pool.query(
     `SELECT COUNT(*)::int AS count
@@ -65,6 +67,14 @@ try {
      WHERE e.id IS NULL`,
   );
   assert.equal(Number(orphanImports.rows[0]?.count ?? 0), 0, 'orphan import receipts detected');
+
+  const invalidFeatureRows = await pool.query(
+    `SELECT COUNT(*)::int AS count
+     FROM tenant_feature_profiles
+     WHERE jsonb_typeof(enabled_features) <> 'array'
+        OR automation_level NOT IN ('manual','assisted','copilot','automated_draft','governed_autonomy')`,
+  );
+  assert.equal(Number(invalidFeatureRows.rows[0]?.count ?? 0), 0, 'invalid tenant feature profiles detected');
 
   console.log('database schema integrity smoke passed');
 } finally {
