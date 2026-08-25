@@ -1,9 +1,7 @@
-import { defineConfig } from 'vite';
-
-export default defineConfig({
+export default {
   root: 'client',
   build: {
     outDir: '../dist-client',
     emptyOutDir: true,
   },
-});
+};
