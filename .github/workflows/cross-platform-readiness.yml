@@ -1,0 +1,26 @@
+name: Cross-platform readiness
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate runtime contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('cross-platform.manifest.json').read_text())
+          assert d.get('schemaVersion') == 3
+          required={'web','pwa','android','ios','macos','windows','linux'}
+          assert required <= set(d.get('targets',{}))
+          impl=d.get('implementation',{})
+          assert impl.get('secureStorage') == 'required'
+          assert impl.get('buildEvidence') == 'required-before-supported'
+          print('cross-platform contract: OK')
+          PY
