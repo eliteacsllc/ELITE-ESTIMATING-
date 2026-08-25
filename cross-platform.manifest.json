@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 3,
+  "targets": {"web":"required","pwa":"required","android":"required","ios":"required","macos":"required","windows":"required","linux":"required"},
+  "implementation": {"sharedClient":"required","mobileShell":"capacitor","desktopShell":"tauri","secureStorage":"required","cameraAndFiles":"adapter-required","buildEvidence":"required-before-supported"}
+}
