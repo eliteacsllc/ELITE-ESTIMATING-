@@ -30,6 +30,9 @@ import { DamageGraphService } from '../damage/service.js';
 import { InMemoryDamageGraphRepository, PostgresDamageGraphRepository, type DamageGraphRepository } from '../damage/repository.js';
 import { InMemoryTenantFeatureProfileRepository, PostgresTenantFeatureProfileRepository, type TenantFeatureProfileRepository } from '../platform/entitlement-repository.js';
 import { TenantEntitlementService } from '../platform/entitlement-service.js';
+import { InMemoryDecisionRecordRepository, PostgresDecisionRecordRepository, type DecisionRecordRepository } from '../decisions/repository.js';
+import { GovernedDecisionService } from '../decisions/service.js';
+import { handleDecisionHttp } from '../decisions/http.js';
 import { HttpMetrics, normalizeMetricRoute } from '../observability/metrics.js';
 import { evaluateOutboxHealth, outboxHealthPolicyFromEnv, renderOperationalMetrics } from '../observability/operational.js';
 import { appCss, appJs, indexHtml } from '../web/assets.js';
@@ -62,6 +65,7 @@ const postgresImportReceipts = databaseUrl ? new PostgresImportReceiptRepository
 const postgresIdempotency = databaseUrl ? new PostgresIdempotencyRepository(databaseUrl) : null;
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
 const postgresEntitlements = databaseUrl ? new PostgresTenantFeatureProfileRepository(databaseUrl) : null;
+const postgresDecisions = databaseUrl ? new PostgresDecisionRecordRepository(databaseUrl) : null;
 const memoryLifecycle = postgresOutbox ? null : new MemoryLifecycleSink();
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
@@ -71,6 +75,7 @@ const damageGraphRepository: DamageGraphRepository = postgresDamageGraphs ?? new
 const importReceiptRepository: ImportReceiptRepository = postgresImportReceipts ?? new InMemoryImportReceiptRepository();
 const idempotencyRepository: IdempotencyRepository = postgresIdempotency ?? new InMemoryIdempotencyRepository();
 const entitlementRepository: TenantFeatureProfileRepository = postgresEntitlements ?? new InMemoryTenantFeatureProfileRepository();
+const decisionRepository: DecisionRecordRepository = postgresDecisions ?? new InMemoryDecisionRecordRepository();
 const lifecycleSink: LifecycleSink = postgresOutbox ?? memoryLifecycle!;
 const lifecycleHealthSource = postgresOutbox ?? memoryLifecycle!;
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
@@ -82,6 +87,7 @@ const evidenceTransferService = blobStore ? new EvidenceTransferService(reposito
 const damageGraphService = new DamageGraphService(repository, damageGraphRepository);
 const importService = new EstimateImportService(service, repository, importReceiptRepository);
 const entitlementService = new TenantEntitlementService(entitlementRepository);
+const decisionService = new GovernedDecisionService(repository, entitlementService, decisionRepository, auditSink);
 const interchange = new EliteJsonInterchangeAdapter();
 const httpMetrics = new HttpMetrics();
 
@@ -172,6 +178,7 @@ async function readiness(): Promise<{
   importReceiptStorage: boolean;
   idempotencyStorage: boolean;
   entitlementStorage: boolean;
+  decisionStorage: boolean;
   idempotencyRequired: boolean;
   rateLimitConfigured: boolean;
   rateLimitDurable: boolean;
@@ -190,7 +197,7 @@ async function readiness(): Promise<{
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
-  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresIdempotency && postgresOutbox && postgresEntitlements);
+  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresIdempotency && postgresOutbox && postgresEntitlements && postgresDecisions);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
   const lifecycleOutbox = Boolean(postgresOutbox) || allowEphemeral;
   const evidenceStorage = Boolean(postgresEvidence) || allowEphemeral;
@@ -198,6 +205,7 @@ async function readiness(): Promise<{
   const importReceiptStorage = postgresImportReceipts ? await postgresImportReceipts.health().catch(() => false) : allowEphemeral;
   const idempotencyStorage = postgresIdempotency ? await postgresIdempotency.health().catch(() => false) : allowEphemeral;
   const entitlementStorage = postgresEntitlements ? await postgresEntitlements.health().catch(() => false) : allowEphemeral;
+  const decisionStorage = postgresDecisions ? await postgresDecisions.health().catch(() => false) : allowEphemeral;
   const blobStorageConfigured = Boolean(blobStore);
   const blobReady = !requireBlobStorage || blobStorageConfigured;
   const rateLimitConfigured = Boolean(rateLimiter);
@@ -209,7 +217,7 @@ async function readiness(): Promise<{
     ? evaluateOutboxHealth(outboxHealth, outboxHealthPolicy)
     : { healthy: false, reasons: ['outbox_health_unavailable'] };
   return {
-    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && decisionStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
     authConfigured,
     authMode,
     durableStorage,
@@ -220,6 +228,7 @@ async function readiness(): Promise<{
     importReceiptStorage,
     idempotencyStorage,
     entitlementStorage,
+    decisionStorage,
     idempotencyRequired: requireIdempotency,
     rateLimitConfigured,
     rateLimitDurable,
@@ -283,6 +292,8 @@ const server = createServer(async (req, res) => {
     }
     const url = requestUrl(req.url);
     const parts = pathParts(req.url);
+
+    if (await handleDecisionHttp({ req, res, actor, parts, url, service: decisionService, send, json })) return;
 
     if (parts[0] === 'v1' && parts[1] === 'platform' && parts[2] === 'features') {
       if (parts.length === 3 && req.method === 'GET') return send(res, 200, await entitlementService.list(actor));
@@ -428,6 +439,7 @@ const shutdown = async () => {
   if (postgresIdempotency) await postgresIdempotency.close();
   if (postgresOutbox) await postgresOutbox.close();
   if (postgresEntitlements) await postgresEntitlements.close();
+  if (postgresDecisions) await postgresDecisions.close();
   if (auditSink instanceof PostgresAuditSink) await auditSink.close();
   if (rateLimiter?.close) await rateLimiter.close();
 };

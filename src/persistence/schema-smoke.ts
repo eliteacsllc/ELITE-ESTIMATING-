@@ -16,6 +16,7 @@ const requiredTables = [
   'mutation_idempotency_receipts',
   'rate_limit_buckets',
   'tenant_feature_profiles',
+  'estimate_decision_records',
 ] as const;
 
 const requiredIndexes = [
@@ -28,6 +29,9 @@ const requiredIndexes = [
   'mutation_idempotency_resource_idx',
   'rate_limit_buckets_last_seen_idx',
   'tenant_feature_profiles_updated_idx',
+  'estimate_decision_records_replay_idx',
+  'estimate_decision_records_estimate_idx',
+  'estimate_decision_records_type_idx',
 ] as const;
 
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });
@@ -42,7 +46,7 @@ try {
   }
 
   const migrationCount = await pool.query('SELECT COUNT(*)::int AS count FROM schema_migrations');
-  assert.ok(Number(migrationCount.rows[0]?.count ?? 0) >= 10, 'expected at least ten applied migrations');
+  assert.ok(Number(migrationCount.rows[0]?.count ?? 0) >= 11, 'expected at least eleven applied migrations');
 
   const orphanEvidence = await pool.query(
     `SELECT COUNT(*)::int AS count
@@ -75,6 +79,22 @@ try {
         OR automation_level NOT IN ('manual','assisted','copilot','automated_draft','governed_autonomy')`,
   );
   assert.equal(Number(invalidFeatureRows.rows[0]?.count ?? 0), 0, 'invalid tenant feature profiles detected');
+
+  const invalidDecisions = await pool.query(
+    `SELECT COUNT(*)::int AS count
+     FROM estimate_decision_records
+     WHERE decision_type NOT IN ('parts_optimization','repair_replace','total_loss')
+        OR input_hash !~ '^[0-9a-f]{64}$'`,
+  );
+  assert.equal(Number(invalidDecisions.rows[0]?.count ?? 0), 0, 'invalid decision records detected');
+
+  const orphanDecisions = await pool.query(
+    `SELECT COUNT(*)::int AS count
+     FROM estimate_decision_records d
+     LEFT JOIN estimates e ON e.tenant_id=d.tenant_id AND e.id=d.estimate_id
+     WHERE e.id IS NULL`,
+  );
+  assert.equal(Number(orphanDecisions.rows[0]?.count ?? 0), 0, 'orphan decision records detected');
 
   console.log('database schema integrity smoke passed');
 } finally {

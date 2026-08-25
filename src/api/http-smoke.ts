@@ -38,12 +38,16 @@ async function expectJson(response: Response, status: number): Promise<Record<st
 const featureProfile = await expectJson(await fetch(`${base}/v1/platform/features/passenger_vehicle`, {
   method: 'PUT',
   headers: authHeaders,
-  body: JSON.stringify({ enabledFeatures: ['motor_raced', 'adas_diagnostics'], automationLevel: 'copilot' }),
+  body: JSON.stringify({
+    enabledFeatures: ['motor_raced', 'adas_diagnostics', 'parts_optimizer', 'repair_replace', 'total_loss'],
+    automationLevel: 'copilot',
+  }),
 }), 200);
 assert.equal(featureProfile.automationLevel, 'copilot');
 assert.ok(Array.isArray(featureProfile.enabledFeatures));
 assert.ok((featureProfile.enabledFeatures as unknown[]).includes('labor_intelligence'));
 assert.ok((featureProfile.enabledFeatures as unknown[]).includes('oem_procedures'));
+assert.ok((featureProfile.enabledFeatures as unknown[]).includes('market_comps'));
 
 const readableProfile = await expectJson(await fetch(`${base}/v1/platform/features/passenger_vehicle`, {
   headers: estimatorHeaders,
@@ -94,6 +98,41 @@ const conflictEstimateResponse = await fetch(`${base}/v1/estimates`, {
 await expectJson(conflictEstimateResponse, 409);
 
 const estimateId = String(firstEstimate.id);
+const decisionBody = JSON.stringify({
+  candidates: [
+    {
+      id: 'oem-part', description: 'Test panel', sourceType: 'new_oem',
+      price: { amountMinor: 25000, currency: 'USD' }, leadTimeDays: 1,
+      certification: 'OEM', warrantyMonths: 36, oemProcedureCompatible: true,
+      provenance: [{ provider: 'ci-licensed-provider', retrievedAt: '2026-08-25T12:00:00.000Z', licenseClass: 'licensed' }],
+    },
+    {
+      id: 'recycled-part', description: 'Test panel', sourceType: 'recycled',
+      price: { amountMinor: 15000, currency: 'USD' }, leadTimeDays: 3,
+      conditionGrade: 'A', warrantyMonths: 6, oemProcedureCompatible: true,
+      provenance: [{ provider: 'ci-licensed-provider', retrievedAt: '2026-08-25T12:00:00.000Z', licenseClass: 'licensed' }],
+    },
+  ],
+  policy: { currency: 'USD', allowedSourceTypes: ['new_oem', 'recycled'], requireOemProcedureCompatibility: true },
+});
+const firstDecisionResponse = await fetch(`${base}/v1/estimates/${estimateId}/decisions/parts`, {
+  method: 'POST', headers: authHeaders, body: decisionBody,
+});
+const firstDecision = await expectJson(firstDecisionResponse, 201);
+assert.equal(firstDecisionResponse.headers.get('idempotency-replayed'), 'false');
+assert.ok(typeof (firstDecision.record as Record<string, unknown>)?.id === 'string');
+
+const replayDecisionResponse = await fetch(`${base}/v1/estimates/${estimateId}/decisions/parts`, {
+  method: 'POST', headers: authHeaders, body: decisionBody,
+});
+const replayDecision = await expectJson(replayDecisionResponse, 200);
+assert.equal(replayDecisionResponse.headers.get('idempotency-replayed'), 'true');
+assert.equal((replayDecision.record as Record<string, unknown>).id, (firstDecision.record as Record<string, unknown>).id);
+
+const decisionHistory = await expectJson(await fetch(`${base}/v1/estimates/${estimateId}/decisions`, { headers: estimatorHeaders }), 200);
+assert.ok(Array.isArray(decisionHistory));
+assert.equal(decisionHistory.length, 1);
+
 await expectJson(await fetch(`${base}/v1/estimates/${estimateId}/approve`, {
   method: 'POST',
   headers: authHeaders,
@@ -116,4 +155,4 @@ const replaySupplement = await expectJson(replaySupplementResponse, 200);
 assert.equal(replaySupplementResponse.headers.get('idempotency-replayed'), 'true');
 assert.equal(replaySupplement.id, firstSupplement.id);
 
-console.log('HTTP idempotency and tenant entitlement smoke passed');
+console.log('HTTP idempotency, tenant entitlement, and governed decision smoke passed');
