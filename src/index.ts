@@ -11,6 +11,8 @@ export * from './platform/features.js';
 export * from './platform/runtime.js';
 export * from './platform/entitlement-repository.js';
 export * from './platform/entitlement-service.js';
+export * from './decisions/repository.js';
+export * from './decisions/service.js';
 export * from './agents/registry.js';
 export * from './engine/estimate.js';
 export * from './engine/dependency.js';
