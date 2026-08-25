@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "build:client": "vite build --config vite.client.config.ts",
+    "build:client": "npx --yes vite@7.1.3 build --config vite.client.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test dist/**/*.test.js",
     "start": "node dist/api/server.js",
@@ -18,13 +18,13 @@
     "launch:check": "node dist/launch/cli.js",
     "production:secrets": "node scripts/prepare-production-secrets.mjs",
     "dispatch:outbox": "node dist/integrations/dispatch-worker.js",
-    "mobile:sync": "npm run build:client && npx @capacitor/cli@8.5.0 sync",
-    "mobile:add:android": "npm run build:client && npx @capacitor/cli@8.5.0 add android",
-    "mobile:add:ios": "npm run build:client && npx @capacitor/cli@8.5.0 add ios",
-    "mobile:open:android": "npm run mobile:sync && npx @capacitor/cli@8.5.0 open android",
-    "mobile:open:ios": "npm run mobile:sync && npx @capacitor/cli@8.5.0 open ios",
-    "desktop:dev": "npm run build:client && npx @tauri-apps/cli@2.11.4 dev",
-    "desktop:build": "npm run build:client && npx @tauri-apps/cli@2.11.4 build",
+    "mobile:sync": "npm run build:client && npx --yes @capacitor/cli@8.5.0 sync",
+    "mobile:add:android": "npm run build:client && npx --yes @capacitor/cli@8.5.0 add android",
+    "mobile:add:ios": "npm run build:client && npx --yes @capacitor/cli@8.5.0 add ios",
+    "mobile:open:android": "npm run mobile:sync && npx --yes @capacitor/cli@8.5.0 open android",
+    "mobile:open:ios": "npm run mobile:sync && npx --yes @capacitor/cli@8.5.0 open ios",
+    "desktop:dev": "npm run build:client && npx --yes @tauri-apps/cli@2.11.4 dev",
+    "desktop:build": "npm run build:client && npx --yes @tauri-apps/cli@2.11.4 build",
     "portfolio:gate": "node scripts/portfolio-gate.mjs",
     "verify": "npm run portfolio:gate && npm run typecheck && npm test && npm run build:client"
   },
@@ -32,17 +32,12 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1115.0",
     "@aws-sdk/s3-request-presigner": "3.1115.0",
-    "@capacitor/android": "8.5.0",
-    "@capacitor/core": "8.5.0",
-    "@capacitor/ios": "8.5.0",
     "jose": "^6.2.10",
     "pg": "^8.16.3"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.5.0",
     "@types/node": "^24.3.0",
     "@types/pg": "^8.15.5",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.3"
+    "typescript": "^5.9.2"
   }
 }
