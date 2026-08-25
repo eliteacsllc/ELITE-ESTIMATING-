@@ -23,8 +23,8 @@ jobs:
   dry-run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # immutable pin
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # immutable pin
         with:
           node-version: '22'
       - name: Detect Cloudflare deployment
@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           if [[ -f wrangler.toml || -f wrangler.json || -f wrangler.jsonc ]]; then echo 'enabled=true' >> "$GITHUB_OUTPUT"; else echo 'enabled=false' >> "$GITHUB_OUTPUT"; fi
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: ${{ steps.cf.outputs.enabled == 'true' && hashFiles('bun.lock', 'bun.lockb') != '' }}
       - name: Install dependencies from committed lockfile
         if: steps.cf.outputs.enabled == 'true'
