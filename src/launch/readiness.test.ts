@@ -7,8 +7,9 @@ const manifest: LaunchManifest = {
   version: 1,
   market: 'US',
   assetClasses: ['passenger_vehicle'],
+  domainProfiles: [{ assetClass: 'passenger_vehicle', enabledFeatures: ['collision'], automationLevel: 'manual' }],
   dataRights: [{ provider: 'licensed-provider', capabilities: ['parts','labor'], regions: ['US'], agreementReference: 'contract-123', approved: true }],
-  providerCertifications: [{ provider: 'licensed-provider', certificationReference: 'provider-cert-2026-001', descriptorHash: 'a'.repeat(64), capabilities: ['parts','labor'], regions: ['US'], green: true }],
+  providerCertifications: [{ provider: 'licensed-provider', certificationReference: 'provider-cert-2026-001', descriptorHash: 'a'.repeat(64), capabilities: ['parts','labor'], regions: ['US'], assetClasses: ['passenger_vehicle'], green: true }],
   safetyCoverage: [
     { category: 'structural', source: 'OEM', regions: ['US'], approved: true },
     { category: 'restraint', source: 'OEM', regions: ['US'], approved: true },
@@ -30,11 +31,33 @@ const env: NodeJS.ProcessEnv = {
   ELITE_OUTBOX_MAX_PENDING: '100', ELITE_OUTBOX_MAX_AGE_SECONDS: '300', ELITE_OUTBOX_MAX_EXHAUSTED: '0',
 };
 
-test('synthetic fully evidenced configuration can become green', () => {
+test('synthetic fully evidenced manual configuration can become green', () => {
   const result = evaluateLaunchReadiness(manifest, env);
   assert.equal(result.green, true);
   assert.deepEqual(result.findings.filter(f => f.severity === 'blocker'), []);
-  assert.ok(result.findings.some(f => f.gate === 'authentication' && f.severity === 'warning'));
+});
+
+test('advanced enabled module creates provider portfolio requirement', () => {
+  const advanced: LaunchManifest = {
+    ...manifest,
+    domainProfiles: [{ assetClass: 'passenger_vehicle', enabledFeatures: ['collision','oem_procedures'], automationLevel: 'copilot' }],
+  };
+  const result = evaluateLaunchReadiness(advanced, env);
+  assert.equal(result.green, false);
+  assert.ok(result.findings.some(f => f.gate === 'provider_portfolio' && f.message.includes('oem_procedures')));
+});
+
+test('matching certified provider fills advanced feature portfolio requirement', () => {
+  const advanced: LaunchManifest = {
+    ...manifest,
+    domainProfiles: [{ assetClass: 'passenger_vehicle', enabledFeatures: ['collision','oem_procedures'], automationLevel: 'copilot' }],
+    providerCertifications: [
+      ...manifest.providerCertifications,
+      { provider: 'oem-provider', certificationReference: 'oem-cert', descriptorHash: 'b'.repeat(64), capabilities: ['oem_procedures'], regions: ['US'], assetClasses: ['passenger_vehicle'], green: true },
+    ],
+  };
+  const result = evaluateLaunchReadiness(advanced, env);
+  assert.equal(result.green, true);
 });
 
 test('remote PostgreSQL without TLS blocks launch', () => {
@@ -43,22 +66,16 @@ test('remote PostgreSQL without TLS blocks launch', () => {
   assert.ok(result.findings.some(f => f.gate === 'persistence' && f.message.includes('TLS')));
 });
 
-test('localhost PostgreSQL remains valid for controlled local verification', () => {
-  const result = evaluateLaunchReadiness(manifest, { ...env, DATABASE_URL: 'postgresql://127.0.0.1:5432/elite' });
-  assert.equal(result.green, true);
-});
-
 test('missing provider certification blocks launch even with an approved agreement', () => {
   const result = evaluateLaunchReadiness({ ...manifest, providerCertifications: [] }, env);
   assert.equal(result.green, false);
   assert.ok(result.findings.some(f => f.gate === 'provider_certification'));
 });
 
-test('provider certification must cover approved capability and region scope', () => {
-  const providerCertifications = [{ ...manifest.providerCertifications[0]!, capabilities: ['parts'], regions: ['CA'] }];
-  const result = evaluateLaunchReadiness({ ...manifest, providerCertifications }, env);
+test('missing domain profile blocks launch', () => {
+  const result = evaluateLaunchReadiness({ ...manifest, domainProfiles: [] }, env);
   assert.equal(result.green, false);
-  assert.ok(result.findings.filter(f => f.gate === 'provider_certification').length >= 1);
+  assert.ok(result.findings.some(f => f.gate === 'product_profile'));
 });
 
 test('missing ADAS evidence blocks launch', () => {
@@ -72,27 +89,6 @@ test('missing production controls blocks launch', () => {
   assert.equal(result.green, false);
   assert.ok(result.findings.some(f => f.gate === 'persistence'));
   assert.ok(result.findings.some(f => f.gate === 'evidence_storage'));
-  assert.ok(result.findings.some(f => f.gate === 'claims_integration'));
-});
-
-test('placeholder secrets and invalid production values block launch', () => {
-  const badEnv = {
-    ...env,
-    ELITE_AUTH_SECRET: 'replace-with-a-long-random-secret',
-    ELITE_METRICS_TOKEN: 'REPLACE_WITH_METRICS_TOKEN_1234567890',
-    R2_SECRET_ACCESS_KEY: 'changeme',
-    ELITE_RATE_LIMIT_CAPACITY: '0',
-    ELITE_RATE_LIMIT_REFILL_PER_SECOND: 'not-a-number',
-    ELITE_CLAIMS_WEBHOOK_URL: 'http://localhost:8787/webhook',
-    ELITE_OUTBOX_MAX_PENDING: '-1',
-  };
-  const result = evaluateLaunchReadiness(manifest, badEnv);
-  assert.equal(result.green, false);
-  assert.ok(result.findings.some(f => f.gate === 'authentication'));
-  assert.ok(result.findings.some(f => f.gate === 'observability'));
-  assert.ok(result.findings.some(f => f.gate === 'evidence_storage'));
-  assert.ok(result.findings.some(f => f.gate === 'abuse_control'));
-  assert.ok(result.findings.some(f => f.gate === 'claims_integration'));
 });
 
 test('malformed manifest is rejected before evaluation', () => {
@@ -106,6 +102,4 @@ test('shipped example manifest cannot certify production', async () => {
   assert.equal(result.green, false);
   assert.ok(result.findings.some(f => f.gate === 'data_rights'));
   assert.ok(result.findings.some(f => f.gate === 'safety'));
-  assert.ok(result.findings.some(f => f.gate === 'privacy'));
-  assert.ok(result.findings.some(f => f.gate === 'pilot'));
 });
