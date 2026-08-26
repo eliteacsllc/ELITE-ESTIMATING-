@@ -8,6 +8,7 @@ export * from './connectors/production-certification.js';
 export * from './connectors/portfolio-certification.js';
 export * from './domains/registry.js';
 export * from './platform/features.js';
+export * from './platform/harmonization.js';
 export * from './platform/runtime.js';
 export * from './platform/entitlement-repository.js';
 export * from './platform/entitlement-service.js';
