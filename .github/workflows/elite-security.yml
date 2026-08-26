@@ -17,60 +17,47 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Scan secrets, dangerous files, and workflow supply chain
+      - name: Portfolio security enforcement
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import pathlib, re, subprocess, sys
-          skip_dirs={'.git','node_modules','dist','build','.next','coverage','vendor','.venv','venv'}
-          secret_patterns={
-            'private_key': re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'),
-            'aws_access_key': re.compile(r'AKIA[0-9A-Z]{16}'),
-            'github_token': re.compile(r'gh[pousr]_[A-Za-z0-9_]{30,}'),
-            'stripe_live_key': re.compile(r'(?:sk|rk)_live_[A-Za-z0-9]{16,}'),
-            'slack_token': re.compile(r'xox[baprs]-[A-Za-z0-9-]{10,}'),
-          }
-          literal = re.compile(r'(?im)^\s*[A-Z0-9_.-]*(?:API[_-]?KEY|SECRET|PASSWORD|TOKEN|CLIENT[_-]?SECRET)[A-Z0-9_.-]*\s*[:=]\s*["\']?([^\s,"\']{12,})')
-          placeholders=('example','sample','placeholder','replace-me','replace_with','changeme','dummy','test-only','ci-only','your-','xxxx')
-          dynamic_prefixes=('env.','process.env.','secrets.','vars.','github.','${{','os.environ','getenv(','secretref:','vault:')
-          findings=[]
+          import pathlib,re,subprocess,sys
+          skip={'.git','node_modules','dist','build','.next','coverage','vendor','.venv','venv'}
+          pats=[re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'),re.compile(r'AKIA[0-9A-Z]{16}'),re.compile(r'gh[pousr]_[A-Za-z0-9_]{30,}'),re.compile(r'(?:sk|rk)_live_[A-Za-z0-9]{16,}'),re.compile(r'xox[baprs]-[A-Za-z0-9-]{10,}')]
+          lit=re.compile(r'(?im)^\s*[A-Z0-9_.-]*(?:API[_-]?KEY|SECRET|PASSWORD|TOKEN|CLIENT[_-]?SECRET)[A-Z0-9_.-]*\s*[:=]\s*["\']?([^\s,"\']{12,})')
+          ph=('example','sample','placeholder','replace-me','replace_with','changeme','dummy','test-only','ci-only','your-','xxxx')
+          dyn=('env.','process.env.','secrets.','vars.','github.','os.environ','getenv(','secretref:','vault:')
+          bad=[]
           for p in pathlib.Path('.').rglob('*'):
-            if not p.is_file() or any(part in skip_dirs for part in p.parts): continue
-            try: text=p.read_text(errors='ignore')
-            except Exception: continue
-            for name,rx in secret_patterns.items():
-              if rx.search(text): findings.append(f'{p}: {name}')
+            if not p.is_file() or any(x in skip for x in p.parts):continue
+            try:t=p.read_text(errors='ignore')
+            except Exception:continue
+            if any(r.search(t) for r in pats):bad.append(f'{p}: high-risk secret signature')
             if not any(x in str(p).lower() for x in ('example','sample','fixture','test','readme','security.md')):
-              for m in literal.finditer(text):
-                value=m.group(1).strip().lower()
-                if value.startswith(dynamic_prefixes): continue
-                if not any(x in value for x in placeholders): findings.append(f'{p}: embedded credential-like literal')
-          tracked=subprocess.check_output(['git','ls-files'], text=True).splitlines()
-          forbidden=re.compile(r'(^|/)(\.env($|\.)|\.dev\.vars($|\.)|credentials\.json$|service-account.*\.json$|id_(rsa|ed25519)$|.*\.(pem|key|p12|pfx|jks|keystore|mobileprovision|tfstate|dump|sqlite|db|bak)$)', re.I)
-          for f in tracked:
-            if forbidden.search(f) and not re.search(r'\.env\.(example|sample)$',f,re.I): findings.append(f'{f}: forbidden secret/data artifact')
+              for m in lit.finditer(t):
+                v=m.group(1).strip().lower()
+                if v.startswith(dyn):continue
+                if not any(x in v for x in ph):bad.append(f'{p}: embedded credential-like literal')
+          forbidden=re.compile(r'(^|/)(\.env($|\.)|\.dev\.vars($|\.)|credentials\.json$|service-account.*\.json$|id_(rsa|ed25519)$|.*\.(pem|key|p12|pfx|jks|keystore|mobileprovision|tfstate|dump|sqlite|db|bak)$)',re.I)
+          for f in subprocess.check_output(['git','ls-files'],text=True).splitlines():
+            if forbidden.search(f) and not re.search(r'\.env\.(example|sample)$',f,re.I):bad.append(f'{f}: forbidden secret/data artifact')
           for wf in pathlib.Path('.github/workflows').glob('*.y*ml'):
-            text=wf.read_text(errors='ignore')
-            if re.search(r'(?m)^\s*pull_request_target\s*:',text): findings.append(f'{wf}: pull_request_target forbidden')
-            if re.search(r'(?m)^\s*permissions\s*:\s*write-all\s*$',text): findings.append(f'{wf}: write-all permissions forbidden')
-            if re.search(r'persist-credentials\s*:\s*true',text,re.I): findings.append(f'{wf}: persisted checkout credentials forbidden')
-            if re.search(r'curl\b[^\n]*\|\s*(?:ba)?sh\b',text,re.I): findings.append(f'{wf}: pipe-to-shell forbidden')
-            for line in text.splitlines():
+            t=wf.read_text(errors='ignore')
+            if re.search(r'(?m)^\s*pull_request_target\s*:',t):bad.append(f'{wf}: pull_request_target forbidden')
+            if re.search(r'(?m)^\s*permissions\s*:\s*write-all\s*$',t):bad.append(f'{wf}: write-all forbidden')
+            if re.search(r'persist-credentials\s*:\s*true',t,re.I):bad.append(f'{wf}: persisted credentials forbidden')
+            if re.search(r'curl\b[^\n]*\|\s*(?:ba)?sh\b',t,re.I):bad.append(f'{wf}: pipe-to-shell forbidden')
+            for line in t.splitlines():
               m=re.search(r'\buses:\s*([^\s#]+)',line)
-              if not m: continue
-              ref=m.group(1)
-              if ref.startswith('./') or ref.startswith('docker://'): continue
-              if '@' not in ref or not re.fullmatch(r'[0-9a-fA-F]{40}',ref.rsplit('@',1)[1]): findings.append(f'{wf}: unpinned action {ref}')
-          history_pat=r'AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{30,}|(sk|rk)_live_[A-Za-z0-9]{16,}|-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'
+              if m:
+                ref=m.group(1)
+                if not ref.startswith('./') and not ref.startswith('docker://') and ('@' not in ref or not re.fullmatch(r'[0-9a-fA-F]{40}',ref.rsplit('@',1)[1])):bad.append(f'{wf}: unpinned action {ref}')
+          hp=r'AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{30,}|(sk|rk)_live_[A-Za-z0-9]{16,}|-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'
           for c in subprocess.check_output(['git','rev-list','--all','--max-count=500'],text=True).splitlines():
-            r=subprocess.run(['git','grep','-I','-n','-E',history_pat,c],text=True,capture_output=True)
-            if r.returncode==0:
-              findings.append(f'history: high-risk secret pattern found in commit {c[:12]}')
-              break
-          if findings:
-            print('SECURITY GATE FAILED')
-            print('\n'.join(sorted(set(findings))))
-            sys.exit(1)
-          print('Security gate passed: no high-risk secret, artifact, or workflow findings.')
+            if subprocess.run(['git','grep','-I','-n','-E',hp,c],capture_output=True).returncode==0:
+              bad.append(f'history: secret signature in {c[:12]}');break
+          if bad:
+            print('SECURITY GATE FAILED');print('\n'.join(sorted(set(bad))));sys.exit(1)
+          print('Security gate passed.')
           PY
