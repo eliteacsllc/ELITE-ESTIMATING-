@@ -55,6 +55,9 @@ const ROUTES: Record<string, string[]> = {
   pricing: ['pricing', 'parts-sourcing', 'carrier-rules', 'estimate-audit'],
   parts: ['parts-sourcing', 'pricing', 'oem-procedure', 'estimate-audit'],
   audit: ['estimate-audit', 'quality-verification', 'compliance'],
+  carrier: ['carrier-rules', 'compliance', 'estimate-audit', 'quality-verification'],
+  compliance: ['compliance', 'estimate-audit', 'quality-verification'],
+  fraud: ['fraud-anomaly', 'estimate-audit', 'compliance', 'quality-verification'],
   supplement: ['supplement', 'estimate-audit', 'pricing', 'quality-verification'],
   property: ['property-scope', 'pricing', 'compliance', 'quality-verification'],
   interoperability: ['interoperability', 'quality-verification', 'compliance'],
@@ -65,7 +68,24 @@ function assertKnownAgent(agentId: string): void {
   if (!AGENTS.some((agent) => agent.id === agentId)) throw new Error(`Unknown agent in mesh plan: ${agentId}`);
 }
 
+export function meshAgentCoverage(): { routed: string[]; unrouted: string[] } {
+  const routed = new Set<string>([
+    ...Object.values(ROUTES).flat(),
+    ...Object.values(META_AGENTS)
+  ]);
+  return {
+    routed: [...routed].sort(),
+    unrouted: AGENTS.map((agent) => agent.id).filter((id) => !routed.has(id)).sort()
+  };
+}
+
+export function assertFullAgentMeshCoverage(): void {
+  const coverage = meshAgentCoverage();
+  if (coverage.unrouted.length) throw new Error(`unrouted_agents:${coverage.unrouted.join(',')}`);
+}
+
 export function buildAgentExecutionPlan(capability: string, criticality: MeshCriticality): AgentExecutionPlan {
+  assertFullAgentMeshCoverage();
   const fallbackRoute = ROUTES.default;
   if (!fallbackRoute) throw new Error('Default agent route is not configured');
   const route = ROUTES[capability] ?? fallbackRoute;

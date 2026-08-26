@@ -1,6 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildAgentExecutionPlan, harmonizeAgentCandidates, shouldAllowAutomaticMutation } from './mesh.js';
+import {
+  assertFullAgentMeshCoverage,
+  buildAgentExecutionPlan,
+  harmonizeAgentCandidates,
+  meshAgentCoverage,
+  shouldAllowAutomaticMutation
+} from './mesh.js';
+
+test('every registered agent is reachable by the mesh', () => {
+  const coverage = meshAgentCoverage();
+  assert.deepEqual(coverage.unrouted, []);
+  assert.doesNotThrow(() => assertFullAgentMeshCoverage());
+  assert.ok(coverage.routed.includes('fraud-anomaly'));
+  assert.ok(coverage.routed.includes('carrier-rules'));
+  assert.ok(coverage.routed.includes('security-governance'));
+  assert.ok(coverage.routed.includes('performance-router'));
+});
+
+test('fraud and carrier capabilities route to their actual specialists', () => {
+  assert.equal(buildAgentExecutionPlan('fraud', 'important').primary, 'fraud-anomaly');
+  assert.equal(buildAgentExecutionPlan('carrier', 'important').primary, 'carrier-rules');
+  assert.equal(buildAgentExecutionPlan('compliance', 'important').primary, 'compliance');
+});
 
 test('safety-critical mesh requires corroboration and evidence quorum', () => {
   const plan = buildAgentExecutionPlan('procedures', 'safety_critical');
