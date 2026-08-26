@@ -96,10 +96,7 @@ function normalizedEvidence(candidates: AgentCandidate[]): string[] {
   return [...new Set(candidates.flatMap((candidate) => candidate.evidenceRefs.filter(Boolean)))];
 }
 
-export function harmonizeAgentCandidates(
-  plan: AgentExecutionPlan,
-  candidates: AgentCandidate[]
-): AgentMeshOutcome {
+export function harmonizeAgentCandidates(plan: AgentExecutionPlan, candidates: AgentCandidate[]): AgentMeshOutcome {
   if (!candidates.length) {
     return {
       disposition: 'rejected', selectedOutputKey: null, selectedAgentId: null, confidence: 0,
@@ -163,12 +160,13 @@ export function harmonizeAgentCandidates(
   }
 
   return {
-    disposition: degradedReasons.length ? 'degraded' : 'accepted',
-    selectedOutputKey, selectedAgentId, confidence, evidenceRefs, consensusRatio, disagreements, safetyVetoes,
-    degradedReasons, fallbackOrder: degradedReasons.length ? [plan.performanceRouter, plan.recovery] : []
+    disposition: degradedReasons.length ? 'degraded' : 'accepted', selectedOutputKey, selectedAgentId,
+    confidence, evidenceRefs, consensusRatio, disagreements, safetyVetoes, degradedReasons,
+    fallbackOrder: degradedReasons.length ? [plan.performanceRouter, plan.recovery] : []
   };
 }
 
 export function shouldAllowAutomaticMutation(outcome: AgentMeshOutcome): boolean {
+  void outcome;
   return false;
 }
