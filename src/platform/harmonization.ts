@@ -67,7 +67,7 @@ const DEFAULT_DEFINITION: FeatureHarmonyDefinition = {
 };
 
 const DEFINITIONS: Partial<Record<FeatureId, FeatureHarmonyDefinition>> = {
-  collision: { id: undefined as never, lane: 'domain', priority: 100, criticality: 'important', mutationClass: 'draft_mutation', providerCapabilities: [] } as FeatureHarmonyDefinition,
+  collision: { lane: 'domain', priority: 100, criticality: 'important', mutationClass: 'draft_mutation', providerCapabilities: [] },
   property: { lane: 'domain', priority: 100, criticality: 'important', mutationClass: 'draft_mutation', providerCapabilities: ['property_pricing'] },
   commercial_truck: { lane: 'domain', priority: 100, criticality: 'important', mutationClass: 'draft_mutation', providerCapabilities: [] },
   heavy_equipment: { lane: 'domain', priority: 100, criticality: 'important', mutationClass: 'draft_mutation', providerCapabilities: [] },
