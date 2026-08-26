@@ -6,7 +6,7 @@ export type AgentRole = {
 };
 
 export const AGENTS: AgentRole[] = [
-  { id: 'orchestrator', purpose: 'Routes estimating work, tools, providers, and approvals.', requiredEvidence: true, canAutoApprove: false },
+  { id: 'orchestrator', purpose: 'Routes estimating work, tools, providers, approvals, and mesh execution plans.', requiredEvidence: true, canAutoApprove: false },
   { id: 'damage-analysis', purpose: 'Interprets inspection evidence and proposes damaged components/areas.', requiredEvidence: true, canAutoApprove: false },
   { id: 'asset-identity', purpose: 'Resolves VIN, serial, build, trim, equipment, and configuration.', requiredEvidence: true, canAutoApprove: false },
   { id: 'oem-procedure', purpose: 'Finds source-backed repair procedures, position statements, and required operations.', requiredEvidence: true, canAutoApprove: false },
@@ -20,7 +20,11 @@ export const AGENTS: AgentRole[] = [
   { id: 'fraud-anomaly', purpose: 'Flags anomalous estimate patterns for human review; never makes a fraud determination.', requiredEvidence: true, canAutoApprove: false },
   { id: 'supplement', purpose: 'Compares revisions, teardown discoveries, diagnostics, and invoices to generate supplement candidates.', requiredEvidence: true, canAutoApprove: false },
   { id: 'interoperability', purpose: 'Maps internal estimate data to supported industry/vendor interchange formats.', requiredEvidence: true, canAutoApprove: false },
-  { id: 'quality-verification', purpose: 'Verifies final estimate completeness, source provenance, approvals, and export integrity.', requiredEvidence: true, canAutoApprove: false }
+  { id: 'quality-verification', purpose: 'Verifies final estimate completeness, source provenance, approvals, export integrity, and mesh consensus.', requiredEvidence: true, canAutoApprove: false },
+  { id: 'harmonization', purpose: 'Reconciles conflicting specialist outputs into one canonical recommendation without weakening safety evidence.', requiredEvidence: true, canAutoApprove: false },
+  { id: 'security-governance', purpose: 'Applies authorization, tenant, safety, provenance, and policy vetoes across every agent and feature.', requiredEvidence: true, canAutoApprove: false },
+  { id: 'recovery-fallback', purpose: 'Routes around failed providers or agents, preserves degraded-mode evidence, and prevents silent loss of required work.', requiredEvidence: true, canAutoApprove: false },
+  { id: 'performance-router', purpose: 'Balances latency, cost, confidence, provider health, and workload while preserving required quorum and safety gates.', requiredEvidence: true, canAutoApprove: false }
 ];
 
 export function getAgent(id: string): AgentRole {
