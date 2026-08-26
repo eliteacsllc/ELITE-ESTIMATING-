@@ -16,6 +16,7 @@ export * from './decisions/repository.js';
 export * from './decisions/service.js';
 export * from './agents/registry.js';
 export * from './agents/mesh.js';
+export * from './agents/control-plane.js';
 export * from './engine/estimate.js';
 export * from './engine/dependency.js';
 export * from './engine/pricing.js';
