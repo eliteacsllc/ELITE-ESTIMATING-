@@ -427,13 +427,14 @@ export function harmonizeFabricCandidates(
   if (independent.some((candidate) => candidate.latencyMs > plan.hardDeadlineMs)) reasons.push('hard_deadline_exceeded');
   const votes: DecisionVote[] = independent.map((candidate) => {
     const runtime = normalizedHealth(candidate.agentId, health);
-    return {
+    const vote: DecisionVote = {
       agentId: candidate.agentId,
       outputKey: candidate.outputKey,
       confidence: clamp01(candidate.confidence) * Math.max(0.25, runtime.trustScore),
-      sourceFamilies: candidate.sourceFamilies,
-      safetyVeto: candidate.safetyVeto
+      sourceFamilies: candidate.sourceFamilies
     };
+    if (candidate.safetyVeto !== undefined) vote.safetyVeto = candidate.safetyVeto;
+    return vote;
   });
   const jury = runAgentJury(votes, plan.criticality);
   reasons.push(...jury.reasons);
