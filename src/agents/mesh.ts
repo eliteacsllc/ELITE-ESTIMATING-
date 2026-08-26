@@ -66,8 +66,11 @@ function assertKnownAgent(agentId: string): void {
 }
 
 export function buildAgentExecutionPlan(capability: string, criticality: MeshCriticality): AgentExecutionPlan {
-  const route = ROUTES[capability] ?? ROUTES.default;
-  const [primary, ...rest] = route;
+  const fallbackRoute = ROUTES.default;
+  if (!fallbackRoute) throw new Error('Default agent route is not configured');
+  const route = ROUTES[capability] ?? fallbackRoute;
+  const primary = route[0];
+  const rest = route.slice(1);
   if (!primary) throw new Error(`No agent route for capability: ${capability}`);
   [...route, ...Object.values(META_AGENTS)].forEach(assertKnownAgent);
 
