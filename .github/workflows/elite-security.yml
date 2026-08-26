@@ -31,8 +31,9 @@ jobs:
             'stripe_live_key': re.compile(r'(?:sk|rk)_live_[A-Za-z0-9]{16,}'),
             'slack_token': re.compile(r'xox[baprs]-[A-Za-z0-9-]{10,}'),
           }
-          literal = re.compile(r'(?im)^\s*[A-Z0-9_.-]*(?:API[_-]?KEY|SECRET|PASSWORD|TOKEN|CLIENT[_-]?SECRET)[A-Z0-9_.-]*\s*[:=]\s*["\']?([A-Za-z0-9_./+=:@-]{12,})')
+          literal = re.compile(r'(?im)^\s*[A-Z0-9_.-]*(?:API[_-]?KEY|SECRET|PASSWORD|TOKEN|CLIENT[_-]?SECRET)[A-Z0-9_.-]*\s*[:=]\s*["\']?([^\s,"\']{12,})')
           placeholders=('example','sample','placeholder','replace-me','replace_with','changeme','dummy','test-only','ci-only','your-','xxxx')
+          dynamic_prefixes=('env.','process.env.','secrets.','vars.','github.','${{','os.environ','getenv(','secretref:','vault:')
           findings=[]
           for p in pathlib.Path('.').rglob('*'):
             if not p.is_file() or any(part in skip_dirs for part in p.parts): continue
@@ -42,7 +43,9 @@ jobs:
               if rx.search(text): findings.append(f'{p}: {name}')
             if not any(x in str(p).lower() for x in ('example','sample','fixture','test','readme','security.md')):
               for m in literal.finditer(text):
-                if not any(x in m.group(1).lower() for x in placeholders): findings.append(f'{p}: embedded credential-like literal')
+                value=m.group(1).strip().lower()
+                if value.startswith(dynamic_prefixes): continue
+                if not any(x in value for x in placeholders): findings.append(f'{p}: embedded credential-like literal')
           tracked=subprocess.check_output(['git','ls-files'], text=True).splitlines()
           forbidden=re.compile(r'(^|/)(\.env($|\.)|\.dev\.vars($|\.)|credentials\.json$|service-account.*\.json$|id_(rsa|ed25519)$|.*\.(pem|key|p12|pfx|jks|keystore|mobileprovision|tfstate|dump|sqlite|db|bak)$)', re.I)
           for f in tracked:
