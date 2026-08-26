@@ -27,6 +27,22 @@ test('harmonizes overlapping safety features into one governed execution lane', 
   assert.deepEqual(plan.blockers, []);
 });
 
+test('routes standalone fraud and carrier features to their dedicated specialists', () => {
+  const fraudPlan = buildFeatureHarmonyPlan({
+    enabled: ['collision','fraud_anomaly'], automationLevel: 'assisted'
+  }, 'passenger_vehicle', capabilities);
+  const fraudLane = fraudPlan.lanes.find((item) => item.lane === 'audit_compliance');
+  assert.ok(fraudLane);
+  assert.equal(fraudLane.meshPrimary, 'fraud-anomaly');
+
+  const carrierPlan = buildFeatureHarmonyPlan({
+    enabled: ['collision','carrier_compliance'], automationLevel: 'assisted'
+  }, 'passenger_vehicle', capabilities);
+  const carrierLane = carrierPlan.lanes.find((item) => item.lane === 'audit_compliance');
+  assert.ok(carrierLane);
+  assert.equal(carrierLane.meshPrimary, 'carrier-rules');
+});
+
 test('fails closed when an enabled feature lacks a certified provider capability', () => {
   const plan = buildFeatureHarmonyPlan({
     enabled: ['collision','vin_build','parts_optimizer'],
