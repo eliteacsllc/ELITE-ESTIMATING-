@@ -17,8 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      DATABASE_URL: postgresql://elite:elite@127.0.0.1:5432/elite_estimating
-      ELITE_AUTH_SECRET: ci-only-secret-that-is-longer-than-thirty-two-characters
+      DATABASE_URL: postgresql://elite@127.0.0.1:5432/elite_estimating
       ELITE_REQUIRE_RATE_LIMIT: 1
       ELITE_RATE_LIMIT_CAPACITY: 100
       ELITE_RATE_LIMIT_REFILL_PER_SECOND: 10
@@ -28,7 +27,7 @@ jobs:
         image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
         env:
           POSTGRES_USER: elite
-          POSTGRES_PASSWORD: elite
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: elite_estimating
         ports:
           - 5432:5432
@@ -39,6 +38,15 @@ jobs:
           --health-retries=10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Generate ephemeral CI auth secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          value="$(openssl rand -hex 32)"
+          echo "::add-mask::$value"
+          echo "ELITE_AUTH_SECRET=$value" >> "$GITHUB_ENV"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
@@ -70,23 +78,23 @@ jobs:
         run: npm run smoke:postgres:schema
       - name: Verify PostgreSQL backup and restore
         run: |
-          docker run --rm --network host -e PGPASSWORD=elite postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
+          docker run --rm --network host postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
             pg_dump -h 127.0.0.1 -U elite -d elite_estimating -Fc > /tmp/elite-estimating.dump
           test -s /tmp/elite-estimating.dump
-          docker run --rm --network host -e PGPASSWORD=elite postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
+          docker run --rm --network host postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
             psql -h 127.0.0.1 -U elite -d postgres -v ON_ERROR_STOP=1 \
             -c 'DROP DATABASE IF EXISTS elite_estimating_restore;' \
             -c 'CREATE DATABASE elite_estimating_restore;'
-          cat /tmp/elite-estimating.dump | docker run --rm -i --network host -e PGPASSWORD=elite postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
+          cat /tmp/elite-estimating.dump | docker run --rm -i --network host postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
             pg_restore -h 127.0.0.1 -U elite -d elite_estimating_restore --no-owner --no-privileges --exit-on-error
-          DATABASE_URL=postgresql://elite:elite@127.0.0.1:5432/elite_estimating_restore npm run smoke:postgres:schema
-          PRIMARY_ESTIMATES=$(docker run --rm --network host -e PGPASSWORD=elite postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
+          DATABASE_URL=postgresql://elite@127.0.0.1:5432/elite_estimating_restore npm run smoke:postgres:schema
+          PRIMARY_ESTIMATES=$(docker run --rm --network host postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
             psql -h 127.0.0.1 -U elite -d elite_estimating -Atc 'SELECT COUNT(*) FROM estimates;')
-          RESTORED_ESTIMATES=$(docker run --rm --network host -e PGPASSWORD=elite postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
+          RESTORED_ESTIMATES=$(docker run --rm --network host postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
             psql -h 127.0.0.1 -U elite -d elite_estimating_restore -Atc 'SELECT COUNT(*) FROM estimates;')
-          PRIMARY_SUPPLEMENTS=$(docker run --rm --network host -e PGPASSWORD=elite postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
+          PRIMARY_SUPPLEMENTS=$(docker run --rm --network host postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
             psql -h 127.0.0.1 -U elite -d elite_estimating -Atc 'SELECT COUNT(*) FROM supplements;')
-          RESTORED_SUPPLEMENTS=$(docker run --rm --network host -e PGPASSWORD=elite postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
+          RESTORED_SUPPLEMENTS=$(docker run --rm --network host postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685 \
             psql -h 127.0.0.1 -U elite -d elite_estimating_restore -Atc 'SELECT COUNT(*) FROM supplements;')
           test "$PRIMARY_ESTIMATES" = "$RESTORED_ESTIMATES"
           test "$PRIMARY_SUPPLEMENTS" = "$RESTORED_SUPPLEMENTS"
