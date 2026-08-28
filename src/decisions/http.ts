@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Principal } from '../security/rbac.js';
 import type { TotalLossInput } from '../engine/total-loss.js';
+import type { FeatureId } from '../platform/features.js';
+import type { MeshCriticality } from '../agents/mesh.js';
 import type { GovernedDecisionService, PartsDecisionInput, RepairReplaceDecisionInput } from './service.js';
 
 type Send = (res: ServerResponse, status: number, body: unknown, extra?: Record<string, string>) => void;
@@ -26,6 +28,18 @@ export async function handleDecisionHttp(context: DecisionHttpContext): Promise<
     const requested = Number(url.searchParams.get('limit') ?? 100);
     const limit = Number.isFinite(requested) ? requested : 100;
     send(res, 200, await service.list(actor, estimateId, limit));
+    return true;
+  }
+
+  if (parts.length === 5 && parts[4] === 'agent-mesh-plan' && req.method === 'GET') {
+    const feature = url.searchParams.get('feature');
+    const criticality = url.searchParams.get('criticality') ?? 'important';
+    const utilization = Number(url.searchParams.get('utilization') ?? '0.5');
+    send(res, 200, await service.agentMeshPlan(actor, estimateId, {
+      feature: feature as FeatureId,
+      criticality: criticality as MeshCriticality,
+      utilization,
+    }));
     return true;
   }
 

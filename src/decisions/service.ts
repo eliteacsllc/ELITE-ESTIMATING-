@@ -11,6 +11,7 @@ import { analyzeTotalLoss, type TotalLossInput, type TotalLossAnalysis } from '.
 import { hashIdempotencyRequest } from '../api/idempotency.js';
 import type { AuditSink } from '../audit/audit.js';
 import { auditEvent, NoopAuditSink } from '../audit/audit.js';
+import { AgentMeshPlanningService, type AgentMeshPlanRequest, type AgentMeshPlanView } from '../agents/planning-service.js';
 import type { DecisionRecord, DecisionRecordRepository, DecisionType } from './repository.js';
 
 export type PartsDecisionInput = { candidates: PartCandidate[]; policy: PartsOptimizationPolicy };
@@ -25,12 +26,16 @@ const FEATURE_BY_DECISION: Record<DecisionType, FeatureId> = {
 };
 
 export class GovernedDecisionService {
+  private readonly meshPlanning: AgentMeshPlanningService;
+
   constructor(
     private readonly estimates: EstimateRepository,
     private readonly entitlements: TenantEntitlementService,
     private readonly decisions: DecisionRecordRepository,
     private readonly audit: AuditSink = new NoopAuditSink(),
-  ) {}
+  ) {
+    this.meshPlanning = new AgentMeshPlanningService(estimates, entitlements);
+  }
 
   private async context(principal: Principal, estimateId: string, decisionType: DecisionType): Promise<Estimate> {
     authorize(principal, 'estimate:read', principal.tenantId);
@@ -87,6 +92,10 @@ export class GovernedDecisionService {
     if (input.currency !== estimate.currency) throw new Error('decision_currency_mismatch');
     const result = analyzeTotalLoss(input);
     return this.persist(principal, estimate, 'total_loss', input, result);
+  }
+
+  async agentMeshPlan(principal: Principal, estimateId: string, input: AgentMeshPlanRequest): Promise<AgentMeshPlanView> {
+    return this.meshPlanning.plan(principal, estimateId, input);
   }
 
   async list(principal: Principal, estimateId: string, limit = 100): Promise<DecisionRecord[]> {
