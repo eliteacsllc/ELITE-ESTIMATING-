@@ -23,7 +23,7 @@ test('GET agent-mesh-plan forwards bounded query inputs and is read-only', async
       return { feature: input.feature, humanApprovalRequired: true, automaticFinalMutationAllowed: false };
     },
   } as unknown as GovernedDecisionService;
-  let sent: { status: number; body: unknown } | null = null;
+  const sent: Array<{ status: number; body: unknown }> = [];
   const handled = await handleDecisionHttp({
     req: request('GET'),
     res: response(),
@@ -31,13 +31,13 @@ test('GET agent-mesh-plan forwards bounded query inputs and is read-only', async
     parts: ['v1','estimates','estimate-1','decisions','agent-mesh-plan'],
     url: new URL('http://localhost/v1/estimates/estimate-1/decisions/agent-mesh-plan?feature=parts_optimizer&criticality=safety_critical&utilization=0.75'),
     service,
-    send: (_res, status, body) => { sent = { status, body }; },
+    send: (_res, status, body) => { sent.push({ status, body }); },
     json: async () => { throw new Error('GET planner must not read a request body'); },
   });
   assert.equal(handled, true);
   assert.deepEqual(received, { estimateId: 'estimate-1', feature: 'parts_optimizer', criticality: 'safety_critical', utilization: 0.75 });
-  assert.equal(sent?.status, 200);
-  assert.deepEqual(sent?.body, { feature: 'parts_optimizer', humanApprovalRequired: true, automaticFinalMutationAllowed: false });
+  assert.equal(sent[0]?.status, 200);
+  assert.deepEqual(sent[0]?.body, { feature: 'parts_optimizer', humanApprovalRequired: true, automaticFinalMutationAllowed: false });
 });
 
 test('POST agent-mesh-plan is not an accepted execution or vote-submission route', async () => {
