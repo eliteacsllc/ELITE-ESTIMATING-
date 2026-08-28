@@ -99,6 +99,7 @@ export class AgentMeshRuntime {
     const controller = new AbortController();
     const candidates: FabricCandidate[] = [];
     const launchedAgents: string[] = [];
+    const tasks: Promise<FabricCandidate>[] = [];
     let deadlineExceeded = false;
     let deadlineHandle: ReturnType<typeof setTimeout> | undefined;
 
@@ -194,45 +195,49 @@ export class AgentMeshRuntime {
       }
     };
 
+    const launch = (slot: FabricAgentSlot): Promise<FabricCandidate> => {
+      const task = runSlot(slot).then(candidate => {
+        candidates.push(candidate);
+        return candidate;
+      });
+      tasks.push(task);
+      return task;
+    };
+
     try {
-      const primaryPromise = runSlot(plan.primary);
+      const primaryPromise = launch(plan.primary);
       const first = await Promise.race([
         primaryPromise.then(candidate => ({ kind: 'primary' as const, candidate })),
         wait(plan.hedgeAfterMs).then(() => ({ kind: 'hedge' as const })),
         deadlinePromise.then(() => ({ kind: 'deadline' as const })),
       ]);
 
-      let shadowPromises: Promise<FabricCandidate>[] = [];
+      let shadowsLaunched = false;
+      const launchShadows = (detail: string): void => {
+        if (shadowsLaunched || !plan.shadows.length) return;
+        shadowsLaunched = true;
+        emit({ type: 'hedged', detail });
+        plan.shadows.forEach(launch);
+      };
+
       if (first.kind === 'primary') {
-        candidates.push(first.candidate);
         const primarySucceeded = !first.candidate.error && Boolean(first.candidate.outputKey);
         if (primarySucceeded && plan.minimumIndependentImplementations <= 1 && !first.candidate.safetyVeto) {
           const decision = harmonizeFabricCandidates(plan, candidates);
-          return { decision, candidates, launchedAgents, elapsedMs: Date.now() - startedAt, deadlineExceeded };
+          return { decision, candidates: [...candidates], launchedAgents: [...new Set(launchedAgents)], elapsedMs: Date.now() - startedAt, deadlineExceeded };
         }
-        if (plan.shadows.length) {
-          emit({ type: 'hedged', detail: primarySucceeded ? 'independent_quorum_required' : 'primary_failed' });
-          shadowPromises = plan.shadows.map(runSlot);
-        }
+        launchShadows(primarySucceeded ? 'independent_quorum_required' : 'primary_failed');
       } else if (first.kind === 'hedge') {
-        if (plan.shadows.length) {
-          emit({ type: 'hedged', detail: 'hedge_delay_elapsed' });
-          shadowPromises = plan.shadows.map(runSlot);
-        }
-        const primary = await Promise.race([primaryPromise, deadlinePromise.then(() => null)]);
-        if (primary) candidates.push(primary);
+        launchShadows('hedge_delay_elapsed');
       }
 
-      if (shadowPromises.length) {
-        const settled = await Promise.race([
-          Promise.all(shadowPromises),
-          deadlinePromise.then(() => null),
-        ]);
-        if (settled) candidates.push(...settled);
-      }
+      await Promise.race([
+        Promise.all(tasks).then(() => undefined),
+        deadlinePromise,
+      ]);
 
       const decision = harmonizeFabricCandidates(plan, candidates);
-      return { decision, candidates, launchedAgents: [...new Set(launchedAgents)], elapsedMs: Date.now() - startedAt, deadlineExceeded };
+      return { decision, candidates: [...candidates], launchedAgents: [...new Set(launchedAgents)], elapsedMs: Date.now() - startedAt, deadlineExceeded };
     } finally {
       if (deadlineHandle) clearTimeout(deadlineHandle);
       controller.abort();
