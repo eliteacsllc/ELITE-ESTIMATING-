@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 3,
+  "targets": {
+    "web": "backend-active-client-source-ready",
+    "pwa": "client-shell-pending-manifest-service-worker",
+    "android": "capacitor-shell-source-ready-build-pending",
+    "ios": "capacitor-shell-source-ready-build-pending",
+    "macos": "tauri-shell-source-ready-build-pending",
+    "windows": "tauri-shell-source-ready-build-pending",
+    "linux": "tauri-shell-source-ready-build-pending"
+  },
+  "implementation": {
+    "sharedClient": "vite-static-client-source-ready",
+    "mobileShell": "capacitor-8.5.0-dist-client",
+    "desktopShell": "tauri-2-dist-client",
+    "secureStorage": "required",
+    "secureStorageStatus": "binding-pending-before-authenticated-native-release",
+    "cameraAndFiles": "html-capture-and-file-input-source-ready-native-permission-verification-pending",
+    "apiTransport": "VITE_ESTIMATING_API_ORIGIN-source-ready-authenticated-flow-pending",
+    "buildEvidence": "required-before-supported"
+  },
+  "status": "shared-client-and-shell-source-ready-pwa-auth-device-build-signing-evidence-pending"
+}
