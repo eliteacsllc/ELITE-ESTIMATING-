@@ -19,6 +19,7 @@ export * from './agents/mesh.js';
 export * from './agents/control-plane.js';
 export * from './agents/supervision.js';
 export * from './agents/fabric.js';
+export * from './agents/runtime.js';
 export * from './engine/estimate.js';
 export * from './engine/dependency.js';
 export * from './engine/pricing.js';
