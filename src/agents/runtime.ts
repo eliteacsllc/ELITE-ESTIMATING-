@@ -133,7 +133,7 @@ export class AgentMeshRuntime {
           ticketChecksum: plan.ticket.checksum,
           error: 'agent_executor_unavailable',
         };
-        emit({ type: 'failed', agentId: slot.agentId, detail: missing.error });
+        emit({ type: 'failed', agentId: slot.agentId, detail: 'agent_executor_unavailable' });
         return missing;
       }
       if (!plan.ticket.allowedAgents.includes(executor.agentId)) {
@@ -148,7 +148,7 @@ export class AgentMeshRuntime {
           ticketChecksum: plan.ticket.checksum,
           error: 'agent_executor_not_allowed_by_ticket',
         };
-        emit({ type: 'failed', agentId: executor.agentId, detail: denied.error });
+        emit({ type: 'failed', agentId: executor.agentId, detail: 'agent_executor_not_allowed_by_ticket' });
         return denied;
       }
       try {
