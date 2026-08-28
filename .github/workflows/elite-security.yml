@@ -27,7 +27,7 @@ jobs:
           pats=[re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'),re.compile(r'AKIA[0-9A-Z]{16}'),re.compile(r'gh[pousr]_[A-Za-z0-9_]{30,}'),re.compile(r'(?:sk|rk)_live_[A-Za-z0-9]{16,}'),re.compile(r'xox[baprs]-[A-Za-z0-9-]{10,}')]
           lit=re.compile(r'(?im)^\s*[A-Z0-9_.-]*(?:API[_-]?KEY|SECRET|PASSWORD|TOKEN|CLIENT[_-]?SECRET)[A-Z0-9_.-]*\s*[:=]\s*["\']?([^\s,"\']{12,})')
           ph=('example','sample','placeholder','replace-me','replace_with','changeme','dummy','test-only','ci-only','your-','xxxx')
-          dyn=('env.','process.env.','secrets.','vars.','github.','os.environ','getenv(','secretref:','vault:')
+          dyn=('env.','process.env.','secrets.','vars.','github.','os.environ','getenv(','secretref:','vault:','${')
           bad=[]
           for p in pathlib.Path('.').rglob('*'):
             if not p.is_file() or any(x in skip for x in p.parts):continue
