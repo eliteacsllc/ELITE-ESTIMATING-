@@ -3,12 +3,12 @@ import type { DataQuery, EstimatingDataProvider, ProviderCapability, ProviderDes
 
 export type HttpFetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
-function publicProvenance(provider: string, sourceId?: string, confidence = 0.95): SourceProvenance {
+function publicProvenance(provider: string, sourceId?: string, confidence = 0.95, region = 'US'): SourceProvenance {
   return {
     provider,
     sourceId,
     retrievedAt: new Date().toISOString(),
-    region: 'US',
+    region,
     licenseClass: 'public',
     confidence,
   };
@@ -16,6 +16,20 @@ function publicProvenance(provider: string, sourceId?: string, confidence = 0.95
 
 function vehicleAsset(asset: AssetIdentity): boolean {
   return ['passenger_vehicle','commercial_vehicle','tractor_trailer','motorcycle','rv','ambulance_emergency'].includes(asset.assetClass);
+}
+
+function propertyAsset(asset: AssetIdentity): boolean {
+  return ['residential_property','commercial_property'].includes(asset.assetClass);
+}
+
+function stateFromQuery(query: DataQuery): string | null {
+  const candidates = [query.search, query.jurisdiction, query.asset.jurisdiction].filter(Boolean).map(value => String(value).trim().toUpperCase());
+  for (const value of candidates) {
+    if (/^[A-Z]{2}$/.test(value)) return value;
+    const match = value.match(/(?:^|[-_:])([A-Z]{2})$/);
+    if (match?.[1]) return match[1];
+  }
+  return null;
 }
 
 export class NhtsaVpicProvider implements EstimatingDataProvider {
@@ -110,6 +124,48 @@ export class NhtsaRecallsProvider implements EstimatingDataProvider {
   }
 }
 
+export class OpenFemaDisasterProvider implements EstimatingDataProvider {
+  constructor(private readonly fetcher: HttpFetcher = fetch) {}
+
+  descriptor(): ProviderDescriptor {
+    return {
+      id: 'openfema-disasters',
+      name: 'OpenFEMA Disaster Declarations',
+      capabilities: ['weather_catastrophe'],
+      regions: ['US'],
+      licenseRequired: false,
+      tenantScopedCredentials: false,
+    };
+  }
+
+  supports(query: DataQuery): boolean {
+    return propertyAsset(query.asset) && query.capability === 'weather_catastrophe' && stateFromQuery(query) !== null;
+  }
+
+  async query<T = unknown>(query: DataQuery): Promise<ProviderRecord<T>[]> {
+    if (!this.supports(query)) return [];
+    const state = stateFromQuery(query)!;
+    const filter = encodeURIComponent(`state eq '${state}'`);
+    const response = await this.fetcher(`https://www.fema.gov/api/open/v1/DisasterDeclarationsSummaries?$filter=${filter}&$orderby=declarationDate%20desc&$top=100`, { headers: { accept: 'application/json' } });
+    if (!response.ok) throw new Error(`openfema_http_${response.status}`);
+    const payload = await response.json() as { DisasterDeclarationsSummaries?: Array<Record<string, unknown>> };
+    return (payload.DisasterDeclarationsSummaries ?? []).map((value, index) => ({
+      value: value as T,
+      provenance: publicProvenance('openfema-disasters', String(value.disasterNumber ?? value.id ?? index), 0.99, `US-${state}`),
+    }));
+  }
+
+  async health(): Promise<{ ok: boolean; latencyMs?: number; message?: string }> {
+    const started = Date.now();
+    try {
+      const response = await this.fetcher('https://www.fema.gov/api/open/v1/DisasterDeclarationsSummaries?$top=1', { headers: { accept: 'application/json' } });
+      return { ok: response.ok, latencyMs: Date.now() - started, message: response.ok ? undefined : `http_${response.status}` };
+    } catch (error) {
+      return { ok: false, latencyMs: Date.now() - started, message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+}
+
 export type CustomerEvidenceRecord<T = unknown> = {
   capability: ProviderCapability;
   value: T;
@@ -168,4 +224,5 @@ export class CustomerEvidenceProvider implements EstimatingDataProvider {
 export const FREE_FIRST_PROVIDER_DESCRIPTORS: ProviderDescriptor[] = [
   new NhtsaVpicProvider(async () => new Response(null, { status: 204 })).descriptor(),
   new NhtsaRecallsProvider(async () => new Response(null, { status: 204 })).descriptor(),
+  new OpenFemaDisasterProvider(async () => new Response(null, { status: 204 })).descriptor(),
 ];
