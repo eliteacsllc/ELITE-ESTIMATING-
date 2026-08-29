@@ -3,6 +3,11 @@ import type { DataQuery, EstimatingDataProvider, ProviderCapability, ProviderDes
 
 export type HttpFetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
+export const ALL_CUSTOMER_EVIDENCE_CAPABILITIES: ProviderCapability[] = [
+  'asset_identity','build_configuration','parts','labor_times','labor_rates','materials','market_pricing','oem_procedures',
+  'adas_requirements','diagnostics','valuation','property_pricing','weather_catastrophe','codes_regulations','safety_recalls',
+];
+
 function publicProvenance(provider: string, sourceId?: string, confidence = 0.95, region = 'US'): SourceProvenance {
   return {
     provider,
@@ -43,6 +48,7 @@ export class NhtsaVpicProvider implements EstimatingDataProvider {
       regions: ['US'],
       licenseRequired: false,
       tenantScopedCredentials: false,
+      credentialMode: 'none',
     };
   }
 
@@ -87,6 +93,7 @@ export class NhtsaRecallsProvider implements EstimatingDataProvider {
       regions: ['US'],
       licenseRequired: false,
       tenantScopedCredentials: false,
+      credentialMode: 'none',
     };
   }
 
@@ -135,6 +142,7 @@ export class OpenFemaDisasterProvider implements EstimatingDataProvider {
       regions: ['US'],
       licenseRequired: false,
       tenantScopedCredentials: false,
+      credentialMode: 'none',
     };
   }
 
@@ -191,6 +199,7 @@ export class CustomerEvidenceProvider implements EstimatingDataProvider {
       regions: ['*'],
       licenseRequired: false,
       tenantScopedCredentials: false,
+      credentialMode: 'none',
     };
   }
 
@@ -219,6 +228,10 @@ export class CustomerEvidenceProvider implements EstimatingDataProvider {
   async health(): Promise<{ ok: boolean; message?: string }> {
     return { ok: true, message: 'customer_evidence_loader_ready' };
   }
+}
+
+export function createUniversalCustomerEvidenceProvider(loader: CustomerEvidenceLoader): CustomerEvidenceProvider {
+  return new CustomerEvidenceProvider(ALL_CUSTOMER_EVIDENCE_CAPABILITIES, loader);
 }
 
 export const FREE_FIRST_PROVIDER_DESCRIPTORS: ProviderDescriptor[] = [
