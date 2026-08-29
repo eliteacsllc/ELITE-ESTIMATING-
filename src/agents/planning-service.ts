@@ -70,7 +70,8 @@ export class AgentMeshPlanningService {
     const policy = { enabled: profile.enabledFeatures, automationLevel: profile.automationLevel };
     const resolved = resolveEntitlements(policy, estimate.asset.assetClass);
     if (!resolved.enabled.has(input.feature)) throw new Error(`not_permitted:feature_not_entitled:${input.feature}`);
-    const source = buildFreeFirstSourcePlan(estimate.asset, policy, this.providers);
+    const sourceAsset = { ...estimate.asset, jurisdiction: estimate.jurisdiction };
+    const source = buildFreeFirstSourcePlan(sourceAsset, policy, this.providers);
     const plan = buildFabricExecutionPlan({
       tenantId: principal.tenantId,
       estimateId: estimate.id,
