@@ -8,15 +8,24 @@ export const ALL_CUSTOMER_EVIDENCE_CAPABILITIES: ProviderCapability[] = [
   'adas_requirements','diagnostics','valuation','property_pricing','weather_catastrophe','codes_regulations','safety_recalls',
 ];
 
+type HealthResult = { ok: boolean; latencyMs?: number; message?: string };
+
 function publicProvenance(provider: string, sourceId?: string, confidence = 0.95, region = 'US'): SourceProvenance {
-  return {
+  const provenance: SourceProvenance = {
     provider,
-    sourceId,
     retrievedAt: new Date().toISOString(),
     region,
     licenseClass: 'public',
     confidence,
   };
+  if (sourceId) provenance.sourceId = sourceId;
+  return provenance;
+}
+
+function healthResult(ok: boolean, started: number, message?: string): HealthResult {
+  const result: HealthResult = { ok, latencyMs: Date.now() - started };
+  if (message) result.message = message;
+  return result;
 }
 
 function vehicleAsset(asset: AssetIdentity): boolean {
@@ -71,13 +80,13 @@ export class NhtsaVpicProvider implements EstimatingDataProvider {
     return [{ value: first as T, provenance: publicProvenance('nhtsa-vpic', query.asset.vin, 0.98) }];
   }
 
-  async health(): Promise<{ ok: boolean; latencyMs?: number; message?: string }> {
+  async health(): Promise<HealthResult> {
     const started = Date.now();
     try {
       const response = await this.fetcher('https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json', { headers: { accept: 'application/json' } });
-      return { ok: response.ok, latencyMs: Date.now() - started, message: response.ok ? undefined : `http_${response.status}` };
+      return healthResult(response.ok, started, response.ok ? undefined : `http_${response.status}`);
     } catch (error) {
-      return { ok: false, latencyMs: Date.now() - started, message: error instanceof Error ? error.message : String(error) };
+      return healthResult(false, started, error instanceof Error ? error.message : String(error));
     }
   }
 }
@@ -120,13 +129,13 @@ export class NhtsaRecallsProvider implements EstimatingDataProvider {
     }));
   }
 
-  async health(): Promise<{ ok: boolean; latencyMs?: number; message?: string }> {
+  async health(): Promise<HealthResult> {
     const started = Date.now();
     try {
       const response = await this.fetcher('https://api.nhtsa.gov/products/vehicle/modelYears?issueType=r', { headers: { accept: 'application/json' } });
-      return { ok: response.ok, latencyMs: Date.now() - started, message: response.ok ? undefined : `http_${response.status}` };
+      return healthResult(response.ok, started, response.ok ? undefined : `http_${response.status}`);
     } catch (error) {
-      return { ok: false, latencyMs: Date.now() - started, message: error instanceof Error ? error.message : String(error) };
+      return healthResult(false, started, error instanceof Error ? error.message : String(error));
     }
   }
 }
@@ -163,13 +172,13 @@ export class OpenFemaDisasterProvider implements EstimatingDataProvider {
     }));
   }
 
-  async health(): Promise<{ ok: boolean; latencyMs?: number; message?: string }> {
+  async health(): Promise<HealthResult> {
     const started = Date.now();
     try {
       const response = await this.fetcher('https://www.fema.gov/api/open/v1/DisasterDeclarationsSummaries?$top=1', { headers: { accept: 'application/json' } });
-      return { ok: response.ok, latencyMs: Date.now() - started, message: response.ok ? undefined : `http_${response.status}` };
+      return healthResult(response.ok, started, response.ok ? undefined : `http_${response.status}`);
     } catch (error) {
-      return { ok: false, latencyMs: Date.now() - started, message: error instanceof Error ? error.message : String(error) };
+      return healthResult(false, started, error instanceof Error ? error.message : String(error));
     }
   }
 }
@@ -212,20 +221,21 @@ export class CustomerEvidenceProvider implements EstimatingDataProvider {
     const records = await this.loader(query);
     return records
       .filter(record => record.capability === query.capability)
-      .map(record => ({
-        value: record.value as T,
-        provenance: {
+      .map(record => {
+        const provenance: SourceProvenance = {
           provider: 'customer-evidence',
           sourceId: record.sourceId,
           retrievedAt: new Date().toISOString(),
-          region: record.region ?? query.jurisdiction ?? query.asset.jurisdiction,
-          licenseClass: 'customer_provided' as const,
-          confidence: record.confidence,
-        },
-      }));
+          licenseClass: 'customer_provided',
+        };
+        const region = record.region ?? query.jurisdiction ?? query.asset.jurisdiction;
+        if (region) provenance.region = region;
+        if (record.confidence !== undefined) provenance.confidence = record.confidence;
+        return { value: record.value as T, provenance };
+      });
   }
 
-  async health(): Promise<{ ok: boolean; message?: string }> {
+  async health(): Promise<HealthResult> {
     return { ok: true, message: 'customer_evidence_loader_ready' };
   }
 }
