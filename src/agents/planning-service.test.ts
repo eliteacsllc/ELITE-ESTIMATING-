@@ -24,7 +24,7 @@ async function fixture() {
   return { estimate, entitlements, planning };
 }
 
-test('returns read-only governed plan for an entitled feature', async () => {
+test('returns read-only governed plan with harmonized free-first sourcing for an entitled feature', async () => {
   const { estimate, entitlements, planning } = await fixture();
   await entitlements.set(admin, { assetClass: 'passenger_vehicle', enabledFeatures: ['parts_optimizer'], automationLevel: 'copilot' });
   const plan = await planning.plan(admin, estimate.id, { feature: 'parts_optimizer', criticality: 'important', utilization: 0.6 });
@@ -34,6 +34,11 @@ test('returns read-only governed plan for an entitled feature', async () => {
   assert.equal(plan.superAgent.id, 'parts-pricing-supervisor');
   assert.ok(plan.primary.agentId.length > 0);
   assert.ok(plan.shadows.length >= 1);
+  assert.equal(plan.sourcePlan.paidProviderArchitecturallyRequired, false);
+  assert.ok(plan.sourcePlan.automaticCapabilities.includes('safety_recalls'));
+  assert.equal(plan.sourcePlan.coverage.find(item => item.capability === 'safety_recalls')?.status, 'free_covered');
+  assert.ok(plan.sourcePlan.customerEvidenceCapabilities.includes('parts'));
+  assert.ok(plan.sourcePlan.customerEvidenceCapabilities.includes('market_pricing'));
   assert.equal(plan.humanApprovalRequired, true);
   assert.equal(plan.automaticFinalMutationAllowed, false);
   assert.ok(Date.parse(plan.ticketExpiresAt) > Date.now());

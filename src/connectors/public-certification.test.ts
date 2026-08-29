@@ -24,6 +24,14 @@ test('OpenFEMA template scopes catastrophe data to property', () => {
   assert.deepEqual(manifest.assetClasses, ['residential_property','commercial_property']);
 });
 
+test('NWS template enables free catastrophe context across property and supported road assets', () => {
+  const manifest = publicProviderProductionManifest('nws-alerts', { termsApproved: true, productionAuthorized: true, retentionApproved: true });
+  assert.deepEqual(manifest.capabilities, ['weather_catastrophe']);
+  assert.ok(manifest.assetClasses.includes('residential_property'));
+  assert.ok(manifest.assetClasses.includes('passenger_vehicle'));
+  assert.equal(manifest.credentialScope, 'none');
+});
+
 test('public template inventory remains explicit', () => {
-  assert.deepEqual(listPublicCertificationTemplates(), ['nhtsa-recalls','nhtsa-vpic','openfema-disasters']);
+  assert.deepEqual(listPublicCertificationTemplates(), ['nhtsa-recalls','nhtsa-vpic','nws-alerts','openfema-disasters']);
 });

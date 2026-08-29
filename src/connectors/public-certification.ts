@@ -2,7 +2,7 @@ import type { AssetClass } from '../domain/types.js';
 import type { ProviderCapability } from './contracts.js';
 import type { ProviderProductionManifest } from './production-certification.js';
 
-export type PublicProviderId = 'nhtsa-vpic' | 'nhtsa-recalls' | 'openfema-disasters';
+export type PublicProviderId = 'nhtsa-vpic' | 'nhtsa-recalls' | 'openfema-disasters' | 'nws-alerts';
 
 export type PublicCertificationApproval = {
   termsApproved: boolean;
@@ -43,6 +43,14 @@ const TEMPLATES: Readonly<Record<PublicProviderId, TemplateDefinition>> = {
     safetyAuthoritativeCapabilities: [],
     termsReference: 'official-public-source:openfema',
     supportReference: 'official-source:https://www.fema.gov/about/openfema/api',
+  },
+  'nws-alerts': {
+    regions: ['US'],
+    assetClasses: ['residential_property','commercial_property','passenger_vehicle','commercial_vehicle','tractor_trailer','rv','ambulance_emergency'],
+    capabilities: ['weather_catastrophe'],
+    safetyAuthoritativeCapabilities: [],
+    termsReference: 'official-public-source:nws-api',
+    supportReference: 'official-source:https://www.weather.gov/documentation/services-web-api',
   },
 };
 
