@@ -29,7 +29,11 @@ This preference is not a license to use a weaker source for a safety-critical de
 
 `OpenFemaDisasterProvider` supports `weather_catastrophe` for US residential and commercial property estimates when a state can be resolved. It provides federal disaster-declaration context and does not replace loss-specific causation evidence or detailed weather observations.
 
-Additional public adapters can be added through the same `EstimatingDataProvider` contract. Candidate free sources include NOAA/NWS weather observations and alerts, official jurisdictional code sources, and other government datasets when their terms, scope, and technical reliability are approved.
+### National Weather Service
+
+`NwsAlertsProvider` uses the official `api.weather.gov` alerts service with an application User-Agent and no commercial API key. It supplies active watch/warning/advisory context for state-scoped supported property and road-vehicle work. NWS alert context does not by itself prove that a particular item was damaged by the reported event.
+
+Additional public adapters can be added through the same `EstimatingDataProvider` contract. Candidate free sources include official jurisdictional code sources, USGS event/hazard services, and other government datasets when their terms, scope, and technical reliability are approved.
 
 ## Customer-owned evidence adapter
 
@@ -61,6 +65,20 @@ A missing paid feed therefore produces one of three states:
 
 The final state is intentional. Elite must remain useful without a commercial provider, but it must not invent OEM repair procedures, ADAS requirements, codes, or other safety/legal facts.
 
+## Source orchestration
+
+`buildFreeFirstSourcePlan()` harmonizes feature requirements and automatically useful public context into a single estimate-scoped sourcing plan. It returns:
+
+- provider capabilities required by enabled optional features;
+- automatic public intelligence such as NHTSA recall context for supported road vehicles and catastrophe context for property;
+- available free provider coverage;
+- missing public-query inputs such as VIN, year/make/model, or state jurisdiction;
+- capabilities that can be satisfied through documented customer evidence;
+- capabilities that require authoritative evidence before safety/compliance approval;
+- an explicit guarantee that no paid provider is architecturally required.
+
+The input-gap output prevents the UI or an agent from calling a capability “ready” merely because an adapter exists. For example, NHTSA recall coverage still requires year/make/model, and automatic state-scoped NWS/OpenFEMA context requires a jurisdiction.
+
 ## Production certification without commercial credentials
 
 Provider descriptors support `credentialMode: none | platform | tenant`.
@@ -75,7 +93,7 @@ Official public providers can use `credentialMode: none`. Their production manif
 - required provenance;
 - an official source/support reference.
 
-`publicProviderProductionManifest()` prebuilds manifests for NHTSA vPIC, NHTSA Recalls, and OpenFEMA. The human approval booleans are deliberately not auto-approved by code.
+`publicProviderProductionManifest()` prebuilds manifests for NHTSA vPIC, NHTSA Recalls, OpenFEMA, and NWS. The human approval booleans are deliberately not auto-approved by code.
 
 Licensed providers continue to require their actual platform/tenant credentials and applicable agreement evidence.
 
@@ -85,9 +103,11 @@ Free-first sourcing does not bypass the agent mesh. Evidence from public, custom
 
 For important and safety-critical decisions, independent agents can challenge one another, evidence/source-family diversity is measured, failed or low-trust agents can be isolated, and final estimate mutation remains human-controlled.
 
+The source plan can be consumed before the mesh assigns provider-dependent work so agents know whether to query a public source, request customer evidence, use an approved owned source, fall back to an optional licensed provider, or stop at an authoritative-evidence gate.
+
 ## What this replaces and what it does not
 
-This architecture can remove the need to depend on a commercial platform for the application itself, VIN decoding, public recall context, public catastrophe context, evidence ingestion, estimate construction, rules orchestration, AI assistance, auditing, supplements, valuation workflows, and provider federation.
+This architecture can remove the need to depend on a commercial platform for the application itself, VIN decoding, public recall context, public catastrophe/weather-alert context, evidence ingestion, estimate construction, rules orchestration, AI assistance, auditing, supplements, valuation workflows, and provider federation.
 
 It does **not** claim that public APIs contain every proprietary labor time, every OEM collision repair procedure, every parts catalog, or every carrier-specific rule. Where those facts are not lawfully available for free, Elite uses customer-authorized evidence, documented estimator input, an optional licensed adapter, or an authoritative-evidence gate.
 
