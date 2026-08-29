@@ -7,6 +7,7 @@ export * from './connectors/adapter-base.js';
 export * from './connectors/production-certification.js';
 export * from './connectors/portfolio-certification.js';
 export * from './connectors/open-data.js';
+export * from './connectors/public-certification.js';
 export * from './domains/registry.js';
 export * from './platform/features.js';
 export * from './platform/harmonization.js';
