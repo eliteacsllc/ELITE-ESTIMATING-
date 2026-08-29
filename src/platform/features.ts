@@ -47,6 +47,9 @@ export type FeatureDefinition = {
 const allVehicle: AssetClass[] = [
   'passenger_vehicle','commercial_vehicle','tractor_trailer','heavy_equipment','motorcycle','atv_utv','rv','marine','ambulance_emergency','crane_specialty','other',
 ];
+const publicRoadVehicle: AssetClass[] = [
+  'passenger_vehicle','commercial_vehicle','tractor_trailer','motorcycle','rv','ambulance_emergency',
+];
 
 export const FEATURE_REGISTRY: Readonly<Record<FeatureId, FeatureDefinition>> = {
   collision: { id: 'collision', optional: true, dependencies: [], assetClasses: ['passenger_vehicle','commercial_vehicle','ambulance_emergency'] },
@@ -61,7 +64,7 @@ export const FEATURE_REGISTRY: Readonly<Record<FeatureId, FeatureDefinition>> = 
   super_appraiser: { id: 'super_appraiser', optional: true, dependencies: ['estimate_audit'] },
   damage_ai: { id: 'damage_ai', optional: true, dependencies: [] },
   vin_build: { id: 'vin_build', optional: true, dependencies: [], assetClasses: allVehicle },
-  public_vehicle_safety: { id: 'public_vehicle_safety', optional: true, dependencies: ['vin_build'], assetClasses: allVehicle },
+  public_vehicle_safety: { id: 'public_vehicle_safety', optional: true, dependencies: ['vin_build'], assetClasses: publicRoadVehicle },
   oem_procedures: { id: 'oem_procedures', optional: true, dependencies: [], assetClasses: allVehicle, safetyGate: 'oem' },
   motor_raced: { id: 'motor_raced', optional: true, dependencies: ['labor_intelligence'], assetClasses: allVehicle },
   deg_intelligence: { id: 'deg_intelligence', optional: true, dependencies: ['estimate_audit'], assetClasses: allVehicle },
