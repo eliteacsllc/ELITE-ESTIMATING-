@@ -2,7 +2,7 @@ import type { EstimateRepository } from '../persistence/repository.js';
 import type { Principal } from '../security/rbac.js';
 import { authorize } from '../security/rbac.js';
 import type { TenantEntitlementService } from '../platform/entitlement-service.js';
-import { assertFeatureEnabled, FEATURE_REGISTRY, resolveEntitlements, type FeatureId } from '../platform/features.js';
+import { FEATURE_REGISTRY, resolveEntitlements, type FeatureId } from '../platform/features.js';
 import { buildFabricExecutionPlan, type FabricAgentSlot, type PerformanceMode, type SuperAgentId } from './fabric.js';
 import type { MeshCriticality } from './mesh.js';
 
@@ -56,7 +56,7 @@ export class AgentMeshPlanningService {
     if (!estimate) throw new Error('estimate_not_found');
     const profile = await this.entitlements.get(principal, estimate.asset.assetClass);
     const resolved = resolveEntitlements({ enabled: profile.enabledFeatures, automationLevel: profile.automationLevel }, estimate.asset.assetClass);
-    assertFeatureEnabled(resolved, input.feature);
+    if (!resolved.enabled.has(input.feature)) throw new Error(`not_permitted:feature_not_entitled:${input.feature}`);
     const plan = buildFabricExecutionPlan({
       tenantId: principal.tenantId,
       estimateId: estimate.id,
