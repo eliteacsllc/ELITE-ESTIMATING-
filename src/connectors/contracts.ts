@@ -15,7 +15,8 @@ export type ProviderCapability =
   | 'valuation'
   | 'property_pricing'
   | 'weather_catastrophe'
-  | 'codes_regulations';
+  | 'codes_regulations'
+  | 'safety_recalls';
 
 export type ProviderDescriptor = {
   id: string;
