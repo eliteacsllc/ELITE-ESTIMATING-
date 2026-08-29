@@ -5,6 +5,7 @@ import { resolveEntitlements, type EntitlementPolicy, type FeatureId } from './f
 
 const FEATURE_CAPABILITIES: Partial<Record<FeatureId, ProviderCapability[]>> = {
   vin_build: ['asset_identity','build_configuration'],
+  public_vehicle_safety: ['safety_recalls'],
   oem_procedures: ['oem_procedures'],
   motor_raced: ['labor_times'],
   parts_optimizer: ['parts','market_pricing'],
