@@ -18,6 +18,8 @@ export type ProviderCapability =
   | 'codes_regulations'
   | 'safety_recalls';
 
+export type ProviderCredentialMode = 'none' | 'platform' | 'tenant';
+
 export type ProviderDescriptor = {
   id: string;
   name: string;
@@ -25,7 +27,13 @@ export type ProviderDescriptor = {
   regions: string[];
   licenseRequired: boolean;
   tenantScopedCredentials: boolean;
+  credentialMode?: ProviderCredentialMode;
 };
+
+export function providerCredentialMode(descriptor: ProviderDescriptor): ProviderCredentialMode {
+  if (descriptor.credentialMode) return descriptor.credentialMode;
+  return descriptor.tenantScopedCredentials ? 'tenant' : 'platform';
+}
 
 export type DataQuery = {
   tenantId: string;
