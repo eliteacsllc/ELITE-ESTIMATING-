@@ -1,4 +1,5 @@
 import type { EstimatingDataProvider, DataQuery, ProviderDescriptor, ProviderCapability } from './contracts.js';
+import { providerCredentialMode } from './contracts.js';
 
 export type ProviderCertificationFinding = {
   severity: 'blocker' | 'warning';
@@ -14,7 +15,7 @@ export type ProviderCertificationReport = {
 
 const CAPABILITIES = new Set<ProviderCapability>([
   'asset_identity','build_configuration','parts','labor_times','labor_rates','materials','market_pricing',
-  'oem_procedures','adas_requirements','diagnostics','valuation','property_pricing','weather_catastrophe','codes_regulations',
+  'oem_procedures','adas_requirements','diagnostics','valuation','property_pricing','weather_catastrophe','codes_regulations','safety_recalls',
 ]);
 
 function validDescriptor(descriptor: ProviderDescriptor, findings: ProviderCertificationFinding[]): void {
@@ -27,6 +28,9 @@ function validDescriptor(descriptor: ProviderDescriptor, findings: ProviderCerti
   if (descriptor.regions.length === 0) block('descriptor.regions', 'at least one supported region is required');
   if (descriptor.regions.some(region => !region.trim())) block('descriptor.region_blank', 'regions cannot contain blank values');
   if (new Set(descriptor.regions.map(r => r.toUpperCase())).size !== descriptor.regions.length) block('descriptor.regions_duplicate', 'regions must be unique case-insensitively');
+  const credentialMode = providerCredentialMode(descriptor);
+  if (credentialMode === 'tenant' && !descriptor.tenantScopedCredentials) block('descriptor.credential_mode', 'tenant credential mode requires tenantScopedCredentials=true');
+  if (credentialMode === 'none' && descriptor.tenantScopedCredentials) block('descriptor.credential_mode', 'no-credential provider cannot declare tenant-scoped credentials');
 }
 
 export async function certifyProvider(
@@ -72,7 +76,7 @@ export async function certifyProvider(
     }
   }
 
-  if (descriptor.tenantScopedCredentials && !sampleQuery.tenantId.trim()) block('tenant.credentials', 'tenant-scoped provider certification requires a tenant id');
+  if (providerCredentialMode(descriptor) === 'tenant' && !sampleQuery.tenantId.trim()) block('tenant.credentials', 'tenant-scoped provider certification requires a tenant id');
 
   return { providerId: descriptor.id, green: !findings.some(f => f.severity === 'blocker'), findings };
 }
