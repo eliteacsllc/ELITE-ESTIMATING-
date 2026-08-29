@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { ProviderDescriptor } from '../connectors/contracts.js';
 import { FREE_FIRST_PROVIDER_DESCRIPTORS } from '../connectors/open-data.js';
 import { paidProviderIsArchitecturallyRequired, planFreeFirstCoverage } from './free-first.js';
 
@@ -20,15 +21,16 @@ test('public NHTSA capabilities are free-covered while unsupported safety eviden
 });
 
 test('customer-owned adapters can satisfy capabilities without changing the free-first policy', () => {
-  const providers = [...FREE_FIRST_PROVIDER_DESCRIPTORS, {
+  const customer: ProviderDescriptor = {
     id: 'customer-evidence',
     name: 'Customer-owned evidence',
-    capabilities: ['oem_procedures','labor_times'] as const,
+    capabilities: ['oem_procedures','labor_times'],
     regions: ['*'],
     licenseRequired: false,
     tenantScopedCredentials: false,
-  }];
-  const plan = planFreeFirstCoverage(['oem_procedures','labor_times'], providers.map(provider => ({ ...provider, capabilities: [...provider.capabilities] })));
+    credentialMode: 'none',
+  };
+  const plan = planFreeFirstCoverage(['oem_procedures','labor_times'], [...FREE_FIRST_PROVIDER_DESCRIPTORS, customer]);
   assert.equal(plan.find(item => item.capability === 'oem_procedures')?.status, 'free_covered');
   assert.equal(plan.find(item => item.capability === 'labor_times')?.status, 'free_covered');
 });
