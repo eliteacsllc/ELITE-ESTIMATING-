@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { DataQuery, EstimatingDataProvider, ProviderDescriptor, ProviderRecord } from './contracts.js';
+import { NhtsaVpicProvider } from './open-data.js';
 import { certifyProviderForProduction, type ProviderProductionManifest } from './production-certification.js';
 
 const descriptor: ProviderDescriptor = {
@@ -46,4 +47,37 @@ test('production provider certification blocks missing agreement and capability 
   assert.equal(result.green, false);
   assert.ok(result.findings.some(finding => finding.code === 'production.agreement'));
   assert.ok(result.findings.some(finding => finding.code === 'production.sample_coverage'));
+});
+
+test('public no-credential provider can certify without a paid contract or secret', async () => {
+  const provider = new NhtsaVpicProvider(async url => {
+    if (url.includes('GetAllMakes')) return new Response(JSON.stringify({ Results: [{ Make_ID: 1, Make_Name: 'HONDA' }] }), { status: 200 });
+    return new Response(JSON.stringify({ Results: [{ Make: 'HONDA', Model: 'Accord', ModelYear: '2020' }] }), { status: 200 });
+  });
+  const publicManifest: ProviderProductionManifest = {
+    version: 1,
+    providerId: 'nhtsa-vpic',
+    agreementReference: 'public-terms-review:nhtsa-vpic',
+    agreementApproved: true,
+    productionAuthorized: true,
+    credentialReference: '',
+    credentialsProvisioned: false,
+    credentialScope: 'none',
+    regions: ['US'],
+    assetClasses: ['passenger_vehicle'],
+    capabilities: ['asset_identity','build_configuration'],
+    safetyAuthoritativeCapabilities: [],
+    supportReference: 'official-source:nhtsa-vpic',
+    dataRetentionApproved: true,
+    provenanceRequired: true,
+  };
+  const vin = '1HGBH41JXMN109186';
+  const publicSamples: DataQuery[] = [
+    { tenantId: 'tenant-a', asset: { assetClass: 'passenger_vehicle', vin, year: 2020 }, capability: 'asset_identity', jurisdiction: 'US' },
+    { tenantId: 'tenant-a', asset: { assetClass: 'passenger_vehicle', vin, year: 2020 }, capability: 'build_configuration', jurisdiction: 'US' },
+  ];
+  const result = await certifyProviderForProduction(provider, publicManifest, publicSamples, new Date('2026-08-29T12:00:00Z'));
+  assert.equal(result.green, true);
+  assert.equal(result.findings.some(finding => finding.code === 'production.credentials'), false);
+  assert.equal(result.sampleReports.length, 2);
 });
