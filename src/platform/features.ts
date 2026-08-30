@@ -20,15 +20,20 @@ export type FeatureId =
   | 'deg_intelligence'
   | 'icar_blueprint'
   | 'parts_optimizer'
+  | 'parts_exchange'
   | 'labor_intelligence'
   | 'adas_diagnostics'
   | 'repair_replace'
+  | 'repair_intelligence'
   | 'total_loss'
   | 'market_comps'
   | 'salvage'
   | 'fraud_anomaly'
   | 'estimate_audit'
   | 'supplements'
+  | 'supplement_prediction'
+  | 'universal_interchange'
+  | 'universal_dispatch'
   | 'carrier_compliance'
   | 'screen_copilot'
   | 'collaboration'
@@ -57,25 +62,30 @@ export const FEATURE_REGISTRY: Readonly<Record<FeatureId, FeatureDefinition>> = 
   marine: { id: 'marine', optional: true, dependencies: [], assetClasses: ['marine'] },
   contents: { id: 'contents', optional: true, dependencies: [], assetClasses: ['contents'] },
   specialty: { id: 'specialty', optional: true, dependencies: [], assetClasses: ['other','crane_specialty','ambulance_emergency'] },
-  super_appraiser: { id: 'super_appraiser', optional: true, dependencies: ['estimate_audit'] },
-  damage_ai: { id: 'damage_ai', optional: true, dependencies: [] },
+  super_appraiser: { id: 'super_appraiser', optional: true, dependencies: ['estimate_audit','repair_intelligence'] },
+  damage_ai: { id: 'damage_ai', optional: true, dependencies: ['repair_intelligence'] },
   vin_build: { id: 'vin_build', optional: true, dependencies: [], assetClasses: allVehicle },
   oem_procedures: { id: 'oem_procedures', optional: true, dependencies: [], assetClasses: allVehicle, safetyGate: 'oem' },
   motor_raced: { id: 'motor_raced', optional: true, dependencies: ['labor_intelligence'], assetClasses: allVehicle },
   deg_intelligence: { id: 'deg_intelligence', optional: true, dependencies: ['estimate_audit'], assetClasses: allVehicle },
-  icar_blueprint: { id: 'icar_blueprint', optional: true, dependencies: ['oem_procedures'], assetClasses: allVehicle },
+  icar_blueprint: { id: 'icar_blueprint', optional: true, dependencies: ['oem_procedures','repair_intelligence'], assetClasses: allVehicle },
   parts_optimizer: { id: 'parts_optimizer', optional: true, dependencies: [] },
+  parts_exchange: { id: 'parts_exchange', optional: true, dependencies: ['parts_optimizer'] },
   labor_intelligence: { id: 'labor_intelligence', optional: true, dependencies: [] },
-  adas_diagnostics: { id: 'adas_diagnostics', optional: true, dependencies: ['oem_procedures'], assetClasses: allVehicle, safetyGate: 'adas' },
-  repair_replace: { id: 'repair_replace', optional: true, dependencies: ['estimate_audit'] },
+  adas_diagnostics: { id: 'adas_diagnostics', optional: true, dependencies: ['oem_procedures','repair_intelligence'], assetClasses: allVehicle, safetyGate: 'adas' },
+  repair_replace: { id: 'repair_replace', optional: true, dependencies: ['estimate_audit','repair_intelligence'] },
+  repair_intelligence: { id: 'repair_intelligence', optional: true, dependencies: ['estimate_audit'] },
   total_loss: { id: 'total_loss', optional: true, dependencies: ['market_comps'] },
   market_comps: { id: 'market_comps', optional: true, dependencies: [] },
   salvage: { id: 'salvage', optional: true, dependencies: ['total_loss'] },
   fraud_anomaly: { id: 'fraud_anomaly', optional: true, dependencies: [] },
   estimate_audit: { id: 'estimate_audit', optional: true, dependencies: [] },
   supplements: { id: 'supplements', optional: true, dependencies: [] },
+  supplement_prediction: { id: 'supplement_prediction', optional: true, dependencies: ['supplements','estimate_audit','repair_intelligence'] },
+  universal_interchange: { id: 'universal_interchange', optional: true, dependencies: [] },
+  universal_dispatch: { id: 'universal_dispatch', optional: true, dependencies: ['universal_interchange'] },
   carrier_compliance: { id: 'carrier_compliance', optional: true, dependencies: ['estimate_audit'] },
-  screen_copilot: { id: 'screen_copilot', optional: true, dependencies: ['estimate_audit'] },
+  screen_copilot: { id: 'screen_copilot', optional: true, dependencies: ['estimate_audit','repair_intelligence'] },
   collaboration: { id: 'collaboration', optional: true, dependencies: [] },
   analytics: { id: 'analytics', optional: true, dependencies: [] },
   api_access: { id: 'api_access', optional: true, dependencies: [] },
