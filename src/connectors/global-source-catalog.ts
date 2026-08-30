@@ -83,7 +83,7 @@ export function sourceDescriptor(source: GlobalEstimatingSource): ProviderDescri
     regions: source.regions,
     licenseRequired: source.requiresAgreement,
     tenantScopedCredentials: source.requiresAgreement,
-    credentialMode: source.requiresAgreement ? 'api_key' : 'none',
+    credentialMode: source.requiresAgreement ? 'tenant' : 'none',
   };
 }
 
