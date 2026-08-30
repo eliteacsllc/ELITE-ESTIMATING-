@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "enabled": true,
+  "profile": "vision-estimating",
+  "resources": ["cpu","ram","gpu","storage","network"],
+  "executionOrder": ["customer_local","customer_byoc","elite_allowance","elite_paid","approved_provider"],
+  "sharedThirdPartyJobs": false,
+  "consentRequired": true,
+  "checkpointing": true,
+  "metering": true,
+  "defaults": {"cpuActivePct":25,"cpuIdlePct":50,"gpuActivePct":35,"gpuIdlePct":65,"ramAvailablePct":25,"storageGb":10,"meteredNetwork":false},
+  "policy": {"outboundOnly":true,"tenantIsolation":true,"localOnlyForSensitiveWhenRequired":true,"hardEligibilityBeforeScoring":true}
+}
