@@ -8,6 +8,13 @@ export type DamageNodeType =
   | 'procedure'
   | 'price'
   | 'adas_safety'
+  | 'diagnostic'
+  | 'calibration'
+  | 'measurement'
+  | 'carrier_rule'
+  | 'decision'
+  | 'confidence'
+  | 'supplement_risk'
   | 'evidence';
 
 export type DamageRelation =
@@ -20,13 +27,19 @@ export type DamageRelation =
   | 'triggers'
   | 'priced_by'
   | 'documented_by'
-  | 'validated_by';
+  | 'validated_by'
+  | 'constrained_by'
+  | 'derived_from'
+  | 'may_trigger'
+  | 'supersedes';
 
 export type DamageGraphNode = {
   id: string;
   type: DamageNodeType;
   label: string;
   safetyCritical?: boolean;
+  confidence?: number;
+  lineId?: string;
   attributes: Record<string, unknown>;
 };
 
@@ -52,6 +65,7 @@ export function validateDamageGraph(graph: DamageGraph): string[] {
   for (const node of graph.nodes) {
     if (!node.id.trim()) errors.push('damage_graph_node_id_required');
     if (nodes.has(node.id)) errors.push(`duplicate_damage_node:${node.id}`);
+    if (node.confidence !== undefined && (!Number.isFinite(node.confidence) || node.confidence < 0 || node.confidence > 1)) errors.push(`damage_graph_confidence_invalid:${node.id}`);
     nodes.set(node.id, node);
   }
   for (const edge of graph.edges) {
@@ -89,8 +103,19 @@ export function traceEvidence(graph: DamageGraph, startNodeId: string, maxDepth 
     if (visited.has(current.id) || current.depth > maxDepth) continue;
     visited.add(current.id);
     const node = nodes.get(current.id);
-    if (node?.type === 'evidence' || node?.type === 'procedure') found.set(node.id, node);
+    if (node && ['evidence','procedure','diagnostic','calibration','measurement','carrier_rule'].includes(node.type)) found.set(node.id, node);
     for (const next of adjacency.get(current.id) ?? []) queue.push({ id: next, depth: current.depth + 1 });
   }
   return [...found.values()];
+}
+
+export function lineIntelligence(graph: DamageGraph, lineId: string): DamageGraphNode[] {
+  const seeds = graph.nodes.filter(node => node.lineId === lineId);
+  if (seeds.length === 0) return [];
+  const output = new Map<string, DamageGraphNode>();
+  for (const seed of seeds) {
+    output.set(seed.id, seed);
+    for (const related of traceEvidence(graph, seed.id, 6)) output.set(related.id, related);
+  }
+  return [...output.values()];
 }
