@@ -1,3 +1,4 @@
+import './elite-compute-fabric-smoke.mjs';
 import './compute-smoke.mjs';
 import fs from 'node:fs';
 import { eliteRuntime, releaseGate } from './runtime.mjs';
