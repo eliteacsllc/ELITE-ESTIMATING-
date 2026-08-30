@@ -66,12 +66,21 @@ function inputGaps(asset: AssetIdentity, capabilities: ProviderCapability[]): So
   return gaps;
 }
 
+function sourceCoversRegion(sourceRegions: string[], region: string): boolean {
+  if (sourceRegions.includes('*') || region === '*') return true;
+  const normalized = region.toUpperCase();
+  return sourceRegions.some(sourceRegion => {
+    const candidate = sourceRegion.toUpperCase();
+    return normalized === candidate || normalized.startsWith(`${candidate}-`);
+  });
+}
+
 function catalogSources(capabilities: ProviderCapability[], region: string, providerAgreements: ReadonlySet<string>): CatalogSourcePlan[] {
   const plans: CatalogSourcePlan[] = [];
   for (const capability of capabilities) {
     for (const source of GLOBAL_ESTIMATING_SOURCES) {
       if (!source.capabilities.includes(capability)) continue;
-      if (!source.regions.includes('*') && region !== '*' && !source.regions.includes(region)) continue;
+      if (!sourceCoversRegion(source.regions, region)) continue;
       const activation = planSourceActivation(source, providerAgreements.has(source.id));
       plans.push({ ...activation, capability, sourceName: source.name, authoritativeForFinalRepairDecision: source.authoritativeForFinalRepairDecision });
     }
