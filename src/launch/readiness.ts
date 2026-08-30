@@ -10,6 +10,9 @@ export type LaunchSafetyCoverage = { category: 'structural' | 'restraint' | 'ada
 export type LaunchManifest = {
   version: 1; market: string; assetClasses: AssetClass[]; domainProfiles: LaunchDomainProfile[]; dataRights: LaunchDataRight[]; providerCertifications: LaunchProviderCertification[]; safetyCoverage: LaunchSafetyCoverage[];
   privacyReviewReference: string; privacyApproved: boolean; securityReviewReference: string; securityApproved: boolean;
+  tenantIsolationEvidenceReference: string; tenantIsolationValidated: boolean;
+  loadTestEvidenceReference: string; loadTestValidated: boolean;
+  adversarialTestEvidenceReference: string; adversarialTestValidated: boolean;
   pilotEvidenceReference: string; pilotValidated: boolean; backupRestoreEvidenceReference: string; rpoMinutes: number; rtoMinutes: number;
 };
 export type LaunchFinding = { gate: string; severity: 'blocker' | 'warning'; message: string };
@@ -39,8 +42,8 @@ export function assertLaunchManifest(value: unknown): asserts value is LaunchMan
   if (!Array.isArray(value.providerCertifications) || !value.providerCertifications.every(item => object(item) && typeof item.provider === 'string' && typeof item.certificationReference === 'string' && typeof item.descriptorHash === 'string' && stringArray(item.capabilities) && stringArray(item.regions) && Array.isArray(item.assetClasses) && item.assetClasses.every(asset => typeof asset === 'string' && ASSET_CLASSES.has(asset as AssetClass)) && typeof item.green === 'boolean')) throw new Error('invalid_launch_manifest_provider_certifications');
   const safetyCategories = new Set(['structural','restraint','adas','ev_hv','property_code','other']);
   if (!Array.isArray(value.safetyCoverage) || !value.safetyCoverage.every(item => object(item) && typeof item.category === 'string' && safetyCategories.has(item.category) && typeof item.source === 'string' && stringArray(item.regions) && typeof item.approved === 'boolean')) throw new Error('invalid_launch_manifest_safety');
-  for (const key of ['privacyReviewReference','securityReviewReference','pilotEvidenceReference','backupRestoreEvidenceReference'] as const) if (typeof value[key] !== 'string') throw new Error(`invalid_launch_manifest_${key}`);
-  for (const key of ['privacyApproved','securityApproved','pilotValidated'] as const) if (typeof value[key] !== 'boolean') throw new Error(`invalid_launch_manifest_${key}`);
+  for (const key of ['privacyReviewReference','securityReviewReference','tenantIsolationEvidenceReference','loadTestEvidenceReference','adversarialTestEvidenceReference','pilotEvidenceReference','backupRestoreEvidenceReference'] as const) if (typeof value[key] !== 'string') throw new Error(`invalid_launch_manifest_${key}`);
+  for (const key of ['privacyApproved','securityApproved','tenantIsolationValidated','loadTestValidated','adversarialTestValidated','pilotValidated'] as const) if (typeof value[key] !== 'boolean') throw new Error(`invalid_launch_manifest_${key}`);
   if (typeof value.rpoMinutes !== 'number' || typeof value.rtoMinutes !== 'number') throw new Error('invalid_launch_manifest_recovery');
 }
 
@@ -98,6 +101,9 @@ export function evaluateLaunchReadiness(manifest: LaunchManifest, env: NodeJS.Pr
   for (const category of requiredSafety) block('safety', `approved ${category} safety coverage is required`);
   if (!manifest.privacyApproved || !manifest.privacyReviewReference.trim()) block('privacy', 'approved privacy review evidence is required');
   if (!manifest.securityApproved || !manifest.securityReviewReference.trim()) block('security', 'approved security review evidence is required');
+  if (!manifest.tenantIsolationValidated || !manifest.tenantIsolationEvidenceReference.trim()) block('tenant_isolation', 'validated cross-tenant isolation evidence is required');
+  if (!manifest.loadTestValidated || !manifest.loadTestEvidenceReference.trim()) block('load_test', 'validated production-like load test evidence is required');
+  if (!manifest.adversarialTestValidated || !manifest.adversarialTestEvidenceReference.trim()) block('adversarial_security', 'validated adversarial security test evidence is required');
   if (!manifest.pilotValidated || !manifest.pilotEvidenceReference.trim()) block('pilot', 'validated market pilot evidence is required');
   if (!manifest.backupRestoreEvidenceReference.trim()) block('recovery', 'backup/restore evidence reference is required');
   if (!positiveInteger(manifest.rpoMinutes)) block('recovery', 'business-approved positive RPO is required');
