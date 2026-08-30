@@ -73,6 +73,7 @@ export * from './damage/service.js';
 export * from './property/measurement.js';
 export * from './property/scope.js';
 export * from './benchmarks/estimate-benchmark.js';
+export * from './benchmarks/certification.js';
 export * from './observability/metrics.js';
 export * from './observability/agent-mesh-metrics.js';
 export * from './observability/operational.js';
