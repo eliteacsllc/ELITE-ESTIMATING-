@@ -33,6 +33,7 @@ export * from './engine/pricing.js';
 export * from './engine/safety.js';
 export * from './engine/compare.js';
 export * from './engine/parts-optimizer.js';
+export * from './engine/parts-exchange.js';
 export * from './engine/repair-replace.js';
 export * from './engine/total-loss.js';
 export * from './application/estimating-service.js';
