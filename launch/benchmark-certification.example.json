@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "evidenceReference": "REPLACE_WITH_BENCHMARK_EVIDENCE_REFERENCE",
+  "market": "REPLACE_WITH_MARKET",
+  "assetClasses": ["passenger_vehicle"],
+  "totalCases": 0,
+  "expertReviewedCases": 0,
+  "meanLineRecall": 0,
+  "meanLinePrecision": 0,
+  "meanAbsoluteCostVariancePercent": 100,
+  "totalSafetyCriticalOmissions": 1,
+  "thresholds": {
+    "minimumCases": 100,
+    "minimumLineRecall": 0.95,
+    "minimumLinePrecision": 0.94,
+    "maximumMeanAbsoluteCostVariancePercent": 10,
+    "maximumSafetyCriticalOmissions": 0
+  },
+  "approvedByExpert": false,
+  "approvedAt": ""
+}
