@@ -16,6 +16,7 @@
     "smoke:postgres:transactions": "node dist/persistence/postgres-transaction-smoke.js",
     "smoke:postgres:schema": "node dist/persistence/schema-smoke.js",
     "smoke:postgres:rate-limit": "node dist/security/postgres-rate-limit-smoke.js",
+    "smoke:postgres:tenant-isolation": "node dist/persistence/tenant-isolation-smoke.js",
     "launch:check": "node dist/launch/cli.js",
     "benchmark:certify": "node dist/benchmarks/certification-cli.js",
     "launch:final": "node dist/launch/final-cli.js",
