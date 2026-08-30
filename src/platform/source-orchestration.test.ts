@@ -15,6 +15,7 @@ test('road vehicle source plan adds public recall intelligence without a paid pr
   assert.equal(plan.coverage.find(item => item.capability === 'asset_identity')?.status, 'free_covered');
   assert.equal(plan.coverage.find(item => item.capability === 'safety_recalls')?.status, 'free_covered');
   assert.deepEqual(plan.inputGaps, []);
+  assert.ok(plan.catalogSources.some(item => item.sourceId === 'nhtsa-vpic' && item.usable));
 });
 
 test('property source plan automatically combines OpenFEMA and NWS catastrophe sources', () => {
@@ -52,4 +53,16 @@ test('safety-critical paid-data gaps resolve to authoritative evidence instead o
   assert.ok(plan.authoritativeEvidenceCapabilities.includes('adas_requirements'));
   assert.ok(plan.customerEvidenceCapabilities.includes('diagnostics'));
   assert.equal(plan.paidProviderArchitecturallyRequired, false);
+  assert.ok(plan.catalogSources.some(item => item.sourceId === 'oem1stop' && item.mode === 'linkout'));
+  assert.ok(plan.catalogSources.some(item => item.sourceId === 'motor-truspeed-repair' && item.mode === 'provider_agreement_required'));
+});
+
+test('executed provider agreement activates licensed source for covered subregion', () => {
+  const plan = buildFreeFirstSourcePlan(
+    { assetClass: 'passenger_vehicle', vin: '1HGBH41JXMN109186', year: 2020, make: 'Honda', model: 'Accord', jurisdiction: 'US-DE' },
+    { enabled: ['collision','oem_procedures'], automationLevel: 'copilot' },
+    [],
+    new Set(['motor-truspeed-repair']),
+  );
+  assert.ok(plan.catalogSources.some(item => item.sourceId === 'motor-truspeed-repair' && item.mode === 'automatic' && item.usable));
 });
