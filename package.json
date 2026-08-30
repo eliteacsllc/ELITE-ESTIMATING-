@@ -10,6 +10,7 @@
     "test": "npm run build && node --test dist/**/*.test.js",
     "start": "node dist/api/server.js",
     "migrate": "node dist/persistence/migrate.js",
+    "runtime:smoke": "node .elite/runtime/smoke.mjs",
     "smoke:http": "node dist/api/http-smoke.js",
     "smoke:remote": "node dist/api/remote-smoke.js",
     "smoke:postgres:transactions": "node dist/persistence/postgres-transaction-smoke.js",
@@ -26,7 +27,7 @@
     "desktop:dev": "npm run build:client && npx --yes @tauri-apps/cli@2.11.4 dev",
     "desktop:build": "npm run build:client && npx --yes @tauri-apps/cli@2.11.4 build",
     "portfolio:gate": "node scripts/portfolio-gate.mjs",
-    "verify": "npm run portfolio:gate && npm run typecheck && npm test && npm run build:client"
+    "verify": "npm run runtime:smoke && npm run portfolio:gate && npm run typecheck && npm test && npm run build:client"
   },
   "engines": { "node": ">=22" },
   "dependencies": {
