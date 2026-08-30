@@ -1,0 +1,14 @@
+name: Hybrid Compute Profile
+on:
+  push:
+    paths: ['.elite/hybrid-compute.json','.elite/validate-hybrid-compute.mjs','.github/workflows/hybrid-compute-profile.yml']
+  pull_request:
+    paths: ['.elite/hybrid-compute.json','.elite/validate-hybrid-compute.mjs','.github/workflows/hybrid-compute-profile.yml']
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node .elite/validate-hybrid-compute.mjs
