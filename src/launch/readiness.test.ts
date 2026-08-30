@@ -18,6 +18,9 @@ const manifest: LaunchManifest = {
   ],
   privacyReviewReference: 'privacy-1', privacyApproved: true,
   securityReviewReference: 'security-1', securityApproved: true,
+  tenantIsolationEvidenceReference: 'tenant-isolation-e2e-1', tenantIsolationValidated: true,
+  loadTestEvidenceReference: 'load-test-1', loadTestValidated: true,
+  adversarialTestEvidenceReference: 'adversarial-test-1', adversarialTestValidated: true,
   pilotEvidenceReference: 'pilot-1', pilotValidated: true,
   backupRestoreEvidenceReference: 'ci-backup-restore', rpoMinutes: 60, rtoMinutes: 240,
 };
@@ -84,6 +87,24 @@ test('missing ADAS evidence blocks launch', () => {
   assert.ok(result.findings.some(f => f.gate === 'safety' && f.message.includes('adas')));
 });
 
+test('tenant isolation evidence is mandatory', () => {
+  const result = evaluateLaunchReadiness({ ...manifest, tenantIsolationValidated: false, tenantIsolationEvidenceReference: '' }, env);
+  assert.equal(result.green, false);
+  assert.ok(result.findings.some(f => f.gate === 'tenant_isolation'));
+});
+
+test('production-like load evidence is mandatory', () => {
+  const result = evaluateLaunchReadiness({ ...manifest, loadTestValidated: false, loadTestEvidenceReference: '' }, env);
+  assert.equal(result.green, false);
+  assert.ok(result.findings.some(f => f.gate === 'load_test'));
+});
+
+test('adversarial security evidence is mandatory', () => {
+  const result = evaluateLaunchReadiness({ ...manifest, adversarialTestValidated: false, adversarialTestEvidenceReference: '' }, env);
+  assert.equal(result.green, false);
+  assert.ok(result.findings.some(f => f.gate === 'adversarial_security'));
+});
+
 test('missing production controls blocks launch', () => {
   const result = evaluateLaunchReadiness(manifest, {});
   assert.equal(result.green, false);
@@ -102,4 +123,7 @@ test('shipped example manifest cannot certify production', async () => {
   assert.equal(result.green, false);
   assert.ok(result.findings.some(f => f.gate === 'data_rights'));
   assert.ok(result.findings.some(f => f.gate === 'safety'));
+  assert.ok(result.findings.some(f => f.gate === 'tenant_isolation'));
+  assert.ok(result.findings.some(f => f.gate === 'load_test'));
+  assert.ok(result.findings.some(f => f.gate === 'adversarial_security'));
 });
