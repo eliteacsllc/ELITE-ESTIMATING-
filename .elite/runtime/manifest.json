@@ -1,0 +1,3 @@
+{
+  "version":"1.0","repo":"eliteacsllc/ELITE-ESTIMATING-","truthStages":["predicted","verified","observed"],"capabilities":["ai","vision","document","persistence","observation","search","payments","notifications"],"requirements":{"tenantIsolation":true,"provenance":true,"providerNeutral":true,"gracefulFallback":true,"exactHeadVerification":true},"domain":"automotive-estimating"
+}
