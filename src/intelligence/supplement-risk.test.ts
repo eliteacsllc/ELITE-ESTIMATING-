@@ -3,11 +3,31 @@ import test from 'node:test';
 import type { Estimate } from '../domain/types.js';
 import { scoreSupplementRisk } from './supplement-risk.js';
 
+const repairPlan = {
+  damageDiscoveryComplete: true,
+  teardownBlueprintComplete: true,
+  hiddenDamageReviewed: true,
+  partsIdentified: true,
+  oneTimeUseItemsIdentified: true,
+  oemProceduresReviewed: true,
+  structuralRequirementsResolved: true,
+  adasRequirementsResolved: true,
+  evHvRequirementsResolved: true,
+  requiredToolsEquipmentConfirmed: true,
+  technicianCapabilityConfirmed: true,
+  subletOperationsIdentified: true,
+  preRepairScanResolved: true,
+  calibrationPlanResolved: true,
+  postRepairScanResolved: true,
+  finalQcPlanResolved: true,
+  testDriveOrFunctionalValidationResolved: true,
+};
+
 const base: Estimate = {
   id: '11111111-1111-4111-8111-111111111111', tenantId: 'tenant-a', asset: { assetClass: 'passenger_vehicle' },
   locale: 'en-US', currency: 'USD', jurisdiction: 'US',
   lines: [{ id: 'line-1', category: 'body', component: 'door', operation: 'repair', quantity: 1, total: { amountMinor: 10000, currency: 'USD' }, humanApproved: true, provenance: [{ provider: 'expert', retrievedAt: '2026-08-30T00:00:00Z', licenseClass: 'owned' }] }],
-  repairPlan: { items: [], complete: true },
+  repairPlan,
   subtotal: { amountMinor: 10000, currency: 'USD' }, tax: { amountMinor: 0, currency: 'USD' }, total: { amountMinor: 10000, currency: 'USD' },
   status: 'draft', revision: 1, createdAt: '2026-08-30T00:00:00Z', updatedAt: '2026-08-30T00:00:00Z',
 };
