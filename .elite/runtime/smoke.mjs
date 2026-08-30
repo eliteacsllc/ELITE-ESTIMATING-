@@ -1,3 +1,4 @@
+import './compute-smoke.mjs';
 import fs from 'node:fs';
 import { eliteRuntime, releaseGate } from './runtime.mjs';
 const manifest=JSON.parse(fs.readFileSync(new URL('./manifest.json',import.meta.url),'utf8'));
