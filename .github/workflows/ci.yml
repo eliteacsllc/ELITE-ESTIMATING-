@@ -70,6 +70,8 @@ jobs:
           npm run check
       - name: Run database migrations
         run: npm run migrate
+      - name: Smoke tenant isolation on PostgreSQL
+        run: npm run smoke:postgres:tenant-isolation
       - name: Smoke distributed PostgreSQL rate limiting
         run: npm run smoke:postgres:rate-limit
       - name: Smoke atomic supplement approval transaction
