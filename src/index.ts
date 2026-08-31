@@ -66,6 +66,7 @@ export * from './audit/audit.js';
 export * from './integrations/outbox.js';
 export * from './integrations/dispatcher.js';
 export * from './integrations/universal-dispatch.js';
+export * from './integrations/dispatch-delivery.js';
 export * from './evidence/types.js';
 export * from './evidence/repository.js';
 export * from './evidence/service.js';
