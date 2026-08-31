@@ -33,7 +33,7 @@ export async function certifyInterchangeAdapter(input: {
   if (!input.adapter.id.trim()) blockers.push('adapter_id_required');
   if (input.fixture.length === 0) blockers.push('fixture_required');
 
-  let exported = new Uint8Array();
+  let exported: Uint8Array<ArrayBufferLike> | null = null;
   let importedLineCount = 0;
   if (!blockers.length) {
     try {
@@ -54,5 +54,5 @@ export async function certifyInterchangeAdapter(input: {
     }
   }
 
-  return { adapterId: input.adapter.id, green: blockers.length === 0, blockers, exportedBytes: exported.byteLength, importedLineCount };
+  return { adapterId: input.adapter.id, green: blockers.length === 0, blockers, exportedBytes: exported?.byteLength ?? 0, importedLineCount };
 }
