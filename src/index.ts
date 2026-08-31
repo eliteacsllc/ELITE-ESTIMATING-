@@ -59,6 +59,7 @@ export * from './workflows/repair-planning.js';
 export * from './workflows/domain-workflow.js';
 export * from './interchange/elite-json.js';
 export * from './interchange/universal.js';
+export * from './interchange/conformance.js';
 export * from './interchange/import-repository.js';
 export * from './interchange/import-service.js';
 export * from './audit/audit.js';
