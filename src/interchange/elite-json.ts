@@ -13,10 +13,20 @@ export type EliteEstimateLinesEnvelope = {
   lines: EstimateLine[];
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function parseEliteEnvelope(payload: Uint8Array): EliteEstimateEnvelope | EliteEstimateLinesEnvelope {
-  const parsed = JSON.parse(new TextDecoder().decode(payload)) as Partial<EliteEstimateEnvelope & EliteEstimateLinesEnvelope>;
-  if (parsed.schema === 'elite-estimating/v1' && parsed.estimate && Array.isArray(parsed.estimate.lines)) return parsed as EliteEstimateEnvelope;
-  if (parsed.schema === 'elite-estimating-lines/v1' && Array.isArray(parsed.lines)) return parsed as EliteEstimateLinesEnvelope;
+  const parsed: unknown = JSON.parse(new TextDecoder().decode(payload));
+  if (!isRecord(parsed) || typeof parsed.schema !== 'string') throw new Error('unsupported_elite_interchange_payload');
+
+  if (parsed.schema === 'elite-estimating/v1' && isRecord(parsed.estimate) && Array.isArray(parsed.estimate.lines)) {
+    return parsed as unknown as EliteEstimateEnvelope;
+  }
+  if (parsed.schema === 'elite-estimating-lines/v1' && Array.isArray(parsed.lines)) {
+    return parsed as unknown as EliteEstimateLinesEnvelope;
+  }
   throw new Error('unsupported_elite_interchange_payload');
 }
 
