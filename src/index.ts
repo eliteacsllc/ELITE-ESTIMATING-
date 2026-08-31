@@ -77,6 +77,7 @@ export * from './damage/estimate-graph.js';
 export * from './damage/repository.js';
 export * from './damage/service.js';
 export * from './damage/proposal.js';
+export * from './damage/visual-provider.js';
 export * from './intelligence/supplement-risk.js';
 export * from './intelligence/estimate-audit.js';
 export * from './property/measurement.js';
