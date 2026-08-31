@@ -278,7 +278,16 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/health') return send(res, 200, { status: 'ok', service: 'elite-estimating' });
     if (req.method === 'GET' && req.url === '/ready') {
       const state = await readiness();
-      return send(res, state.ready ? 200 : 503, { status: state.ready ? 'ready' : 'not_ready', ...state });
+      return send(res, state.ready ? 200 : 503, {
+        status: state.ready ? 'ready' : 'not_ready',
+        capabilities: {
+          estimating: state.databaseHealthy ? 'available' : 'degraded',
+          evidence: state.evidenceStorage && (!state.blobStorageRequired || state.blobStorageConfigured) ? 'available' : 'degraded',
+          governance: state.authConfigured && state.entitlementStorage && state.decisionStorage && (!state.rateLimitRequired || state.rateLimitHealthy) ? 'available' : 'degraded',
+          lifecycle: state.lifecycleOutbox && state.outboxHealthy ? 'available' : 'degraded',
+          idempotency: state.idempotencyStorage ? 'available' : 'degraded',
+        },
+      });
     }
 
     const actor = await principal(req);
@@ -421,7 +430,16 @@ const server = createServer(async (req, res) => {
       : message === 'blob_storage_not_configured' ? 503
       : message === 'request_too_large' ? 413
       : 400;
-    return send(res, status, { error: message });
+    const validation = new Set(['asset_required', 'idempotency_key_required', 'invalid_damage_graph_revision', 'lines_array_required', 'request_too_large']);
+    const publicError = status === 401 ? 'unauthorized'
+      : status === 403 ? 'forbidden'
+      : status === 404 ? 'not_found'
+      : status === 409 ? 'conflict'
+      : status === 503 ? 'service_unavailable'
+      : validation.has(message) ? message
+      : 'request_rejected';
+    if (publicError !== message) console.error('estimating_request_error', error);
+    return send(res, status, { error: publicError });
   }
 });
 
