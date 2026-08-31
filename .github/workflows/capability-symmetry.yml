@@ -1,0 +1,14 @@
+name: Capability Symmetry
+on: {push: {branches: [main]}, pull_request: {}}
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: |
+          node --input-type=module <<'NODE'
+          import fs from'node:fs';const m=JSON.parse(fs.readFileSync('.elite/capability-symmetry.json'));if(!m.standaloneRequired||!m.presentationBoundaryRequired||!m.optionalEliteIntegrationsOnly||m.essentialCapabilities?.some(c=>c.local!==true))throw new Error('symmetry violation');const{presentForVisibility,assertCustomerSafe}=await import('./src/presentation-boundary.mjs');const x={publicStatus:'in_progress',result:{ok:true,internal:{agents:['a']}},agents:['a'],providers:['p'],providerScoring:'hidden',internalCosts:1};const c=presentForVisibility(x);assertCustomerSafe(c);if(JSON.stringify(c).includes('hidden')||c.agents||c.providers)throw new Error('visibility leak');if(!presentForVisibility(x,'admin').agents)throw new Error('admin visibility broken');console.log('verified',m.product);
+          NODE
