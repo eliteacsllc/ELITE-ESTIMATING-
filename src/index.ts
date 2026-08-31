@@ -12,6 +12,7 @@ export * from './connectors/nws-weather.js';
 export * from './connectors/public-certification.js';
 export * from './domains/registry.js';
 export * from './platform/features.js';
+export * from './platform/competitive-stack.js';
 export * from './platform/harmonization.js';
 export * from './platform/runtime.js';
 export * from './platform/free-first.js';
