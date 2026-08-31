@@ -71,6 +71,7 @@ export * from './evidence/service.js';
 export * from './evidence/blob-store.js';
 export * from './evidence/transfer-service.js';
 export * from './damage/graph.js';
+export * from './damage/estimate-graph.js';
 export * from './damage/repository.js';
 export * from './damage/service.js';
 export * from './damage/proposal.js';
