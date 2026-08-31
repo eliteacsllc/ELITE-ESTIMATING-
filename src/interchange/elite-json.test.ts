@@ -1,12 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EliteJsonInterchangeAdapter } from './elite-json.js';
-import type { Estimate } from '../domain/types.js';
+import type { Estimate, EstimateLine } from '../domain/types.js';
 
 const estimate: Estimate = {
   id: 'e1', tenantId: 't1', asset: { assetClass: 'contents' }, locale: 'en-US', currency: 'USD', jurisdiction: 'US',
   lines: [], subtotal: { amountMinor: 0, currency: 'USD' }, tax: { amountMinor: 0, currency: 'USD' }, total: { amountMinor: 0, currency: 'USD' },
   status: 'draft', revision: 1, createdAt: '2026-08-23T00:00:00Z', updatedAt: '2026-08-23T00:00:00Z',
+};
+
+const line: EstimateLine = {
+  id: 'line-1', category: 'body', component: 'door', operation: 'repair', quantity: 1,
+  total: { amountMinor: 10000, currency: 'USD' }, humanApproved: true,
+  provenance: [{ provider: 'expert', retrievedAt: '2026-08-30T00:00:00Z', licenseClass: 'owned' }],
 };
 
 test('exports and recognizes canonical estimate envelope', async () => {
@@ -16,4 +22,20 @@ test('exports and recognizes canonical estimate envelope', async () => {
   const imported = await adapter.import(payload);
   assert.equal(imported.sourceEstimateId, 'e1');
   assert.equal(imported.lines.length, 0);
+});
+
+test('line-only envelope round trips through the native adapter', async () => {
+  const adapter = new EliteJsonInterchangeAdapter();
+  const payload = await adapter.export([line]);
+  assert.equal(adapter.canImport('application/json', payload), true);
+  const imported = await adapter.import(payload);
+  assert.equal(imported.sourceEstimateId, undefined);
+  assert.equal(imported.lines.length, 1);
+  assert.equal(imported.lines[0]?.component, 'door');
+  assert.equal(imported.lines[0]?.total.amountMinor, 10000);
+});
+
+test('non-Elite JSON is rejected', () => {
+  const adapter = new EliteJsonInterchangeAdapter();
+  assert.equal(adapter.canImport('application/json', new TextEncoder().encode('{"schema":"other/v1"}')), false);
 });
