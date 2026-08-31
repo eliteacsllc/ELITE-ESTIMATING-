@@ -40,10 +40,9 @@ export function buildEstimateIntelligenceGraph(estimate: Estimate): EstimateGrap
       id: componentId,
       type: 'component',
       label: line.component,
-      safetyCritical: line.safetyCritical,
       confidence: line.aiConfidence,
       lineId: line.id,
-      attributes: { category: line.category, quantity: line.quantity, unit: line.unit ?? null },
+      attributes: { category: line.category, quantity: line.quantity, unit: line.unit ?? null, safetyCriticalContext: line.safetyCritical ?? false },
     });
     nodes.push({
       id: operationId,
@@ -86,23 +85,23 @@ export function buildEstimateIntelligenceGraph(estimate: Estimate): EstimateGrap
 
     for (const procedureRef of line.procedureRefs ?? []) {
       const procedureId = `procedure:${lineKey}:${safeId(procedureRef)}`;
-      nodes.push({ id: procedureId, type: 'procedure', label: procedureRef, safetyCritical: line.safetyCritical, lineId: line.id, attributes: { reference: procedureRef } });
+      nodes.push({ id: procedureId, type: 'procedure', label: procedureRef, lineId: line.id, attributes: { reference: procedureRef, safetyCriticalContext: line.safetyCritical ?? false } });
       edges.push(edge(`operation-procedure:${lineKey}:${safeId(procedureRef)}`, operationId, procedureId, 'constrained_by', provenanceRefs));
     }
 
     if (line.operation === 'scan') {
       const diagnosticId = `diagnostic:${lineKey}`;
-      nodes.push({ id: diagnosticId, type: 'diagnostic', label: line.component, safetyCritical: line.safetyCritical, lineId: line.id, attributes: {} });
+      nodes.push({ id: diagnosticId, type: 'diagnostic', label: line.component, lineId: line.id, attributes: { safetyCriticalContext: line.safetyCritical ?? false } });
       edges.push(edge(`operation-diagnostic:${lineKey}`, operationId, diagnosticId, 'includes', provenanceRefs));
     }
     if (line.operation === 'calibrate') {
       const calibrationId = `calibration:${lineKey}`;
-      nodes.push({ id: calibrationId, type: 'calibration', label: line.component, safetyCritical: true, lineId: line.id, attributes: {} });
+      nodes.push({ id: calibrationId, type: 'calibration', label: line.component, lineId: line.id, attributes: { safetyCriticalContext: true } });
       edges.push(edge(`operation-calibration:${lineKey}`, operationId, calibrationId, 'includes', provenanceRefs));
     }
     if (line.operation === 'measure') {
       const measurementId = `measurement:${lineKey}`;
-      nodes.push({ id: measurementId, type: 'measurement', label: line.component, safetyCritical: line.safetyCritical, lineId: line.id, attributes: {} });
+      nodes.push({ id: measurementId, type: 'measurement', label: line.component, lineId: line.id, attributes: { safetyCriticalContext: line.safetyCritical ?? false } });
       edges.push(edge(`operation-measurement:${lineKey}`, operationId, measurementId, 'includes', provenanceRefs));
     }
   }
