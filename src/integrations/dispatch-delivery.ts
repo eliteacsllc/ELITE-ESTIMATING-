@@ -43,14 +43,15 @@ export function recordDispatchAttempt(delivery: DispatchDelivery, input: {
   if (!Number.isFinite(Date.parse(input.at))) throw new Error('dispatch_attempt_time_invalid');
   if (input.outcome === 'retryable_failure' && !input.errorCode?.trim()) throw new Error('dispatch_retry_error_required');
   if (input.outcome === 'permanent_failure' && !input.errorCode?.trim()) throw new Error('dispatch_failure_error_required');
+  const { errorCode: _previousErrorCode, ...base } = delivery;
   return {
-    ...delivery,
+    ...base,
     status: input.outcome,
     attempt: delivery.attempt + 1,
     lastAttemptAt: input.at,
     ...(input.outcome === 'acknowledged' ? { acknowledgedAt: input.at } : {}),
     ...(input.providerReference?.trim() ? { providerReference: input.providerReference.trim() } : {}),
-    ...(input.errorCode?.trim() ? { errorCode: input.errorCode.trim() } : { errorCode: undefined }),
+    ...(input.errorCode?.trim() ? { errorCode: input.errorCode.trim() } : {}),
   };
 }
 
