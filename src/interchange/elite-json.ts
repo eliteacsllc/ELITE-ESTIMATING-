@@ -7,32 +7,52 @@ export type EliteEstimateEnvelope = {
   estimate: Estimate;
 };
 
+export type EliteEstimateLinesEnvelope = {
+  schema: 'elite-estimating-lines/v1';
+  exportedAt: string;
+  lines: EstimateLine[];
+};
+
+function parseEliteEnvelope(payload: Uint8Array): EliteEstimateEnvelope | EliteEstimateLinesEnvelope {
+  const parsed = JSON.parse(new TextDecoder().decode(payload)) as Partial<EliteEstimateEnvelope & EliteEstimateLinesEnvelope>;
+  if (parsed.schema === 'elite-estimating/v1' && parsed.estimate && Array.isArray(parsed.estimate.lines)) return parsed as EliteEstimateEnvelope;
+  if (parsed.schema === 'elite-estimating-lines/v1' && Array.isArray(parsed.lines)) return parsed as EliteEstimateLinesEnvelope;
+  throw new Error('unsupported_elite_interchange_payload');
+}
+
 export class EliteJsonInterchangeAdapter implements EstimateInterchangeAdapter {
   readonly id = 'elite-json-v1';
 
   canImport(contentType: string, payload: Uint8Array): boolean {
     if (!contentType.includes('json')) return false;
     try {
-      const parsed = JSON.parse(new TextDecoder().decode(payload)) as Partial<EliteEstimateEnvelope>;
-      return parsed.schema === 'elite-estimating/v1' && Boolean(parsed.estimate);
+      parseEliteEnvelope(payload);
+      return true;
     } catch {
       return false;
     }
   }
 
   async import(payload: Uint8Array): Promise<ImportEstimateResult> {
-    const parsed = JSON.parse(new TextDecoder().decode(payload)) as EliteEstimateEnvelope;
-    if (parsed.schema !== 'elite-estimating/v1' || !parsed.estimate) throw new Error('unsupported_elite_interchange_payload');
+    const parsed = parseEliteEnvelope(payload);
+    if (parsed.schema === 'elite-estimating/v1') {
+      return {
+        sourceSystem: 'elite-estimating',
+        sourceEstimateId: parsed.estimate.id,
+        lines: parsed.estimate.lines,
+        warnings: [],
+      };
+    }
     return {
       sourceSystem: 'elite-estimating',
-      sourceEstimateId: parsed.estimate.id,
-      lines: parsed.estimate.lines,
+      lines: parsed.lines,
       warnings: [],
     };
   }
 
   async export(lines: EstimateLine[]): Promise<Uint8Array> {
-    return new TextEncoder().encode(JSON.stringify({ schema: 'elite-estimating-lines/v1', exportedAt: new Date().toISOString(), lines }));
+    const envelope: EliteEstimateLinesEnvelope = { schema: 'elite-estimating-lines/v1', exportedAt: new Date().toISOString(), lines };
+    return new TextEncoder().encode(JSON.stringify(envelope));
   }
 
   exportEstimate(estimate: Estimate): Uint8Array {
