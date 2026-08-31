@@ -40,7 +40,7 @@ export function buildEstimateIntelligenceGraph(estimate: Estimate): EstimateGrap
       id: componentId,
       type: 'component',
       label: line.component,
-      confidence: line.aiConfidence,
+      ...(line.aiConfidence !== undefined ? { confidence: line.aiConfidence } : {}),
       lineId: line.id,
       attributes: { category: line.category, quantity: line.quantity, unit: line.unit ?? null, safetyCriticalContext: line.safetyCritical ?? false },
     });
@@ -48,8 +48,8 @@ export function buildEstimateIntelligenceGraph(estimate: Estimate): EstimateGrap
       id: operationId,
       type: 'operation',
       label: line.operation,
-      safetyCritical: line.safetyCritical,
-      confidence: line.aiConfidence,
+      ...(line.safetyCritical !== undefined ? { safetyCritical: line.safetyCritical } : {}),
+      ...(line.aiConfidence !== undefined ? { confidence: line.aiConfidence } : {}),
       lineId: line.id,
       attributes: { humanApproved: line.humanApproved, aiSuggested: line.aiSuggested ?? false, laborHours: line.laborHours ?? null },
     });
@@ -69,7 +69,7 @@ export function buildEstimateIntelligenceGraph(estimate: Estimate): EstimateGrap
         type: 'evidence',
         label: source.provider,
         lineId: line.id,
-        confidence: source.confidence,
+        ...(source.confidence !== undefined ? { confidence: source.confidence } : {}),
         attributes: { ...source },
       });
     });
