@@ -35,8 +35,8 @@
   },
   "engines": { "node": ">=22" },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1115.0",
-    "@aws-sdk/s3-request-presigner": "3.1115.0",
+    "@aws-sdk/client-s3": "3.1120.0",
+    "@aws-sdk/s3-request-presigner": "3.1120.0",
     "jose": "^6.2.10",
     "pg": "^8.16.3"
   },
