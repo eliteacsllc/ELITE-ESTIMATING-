@@ -1,0 +1,22 @@
+name: Innovation Intelligence
+on:
+  push:
+    branches: [innovation-intelligence]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate standalone innovation intelligence
+        run: |
+          node scripts/innovation-validate.mjs
+          node scripts/innovation-combine.mjs
+          node -e "const fs=require('fs');for(const f of ['.elite/innovation.manifest.json','.elite/innovation-report.json','.elite/innovation-judged.json','.elite/innovation-combinations.json'])JSON.parse(fs.readFileSync(f));"

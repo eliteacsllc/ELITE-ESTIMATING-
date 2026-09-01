@@ -1,0 +1,21 @@
+name: Innovation Opportunity Depth
+on:
+  push:
+    branches: [innovation-intelligence]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  explain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate explained opportunities
+        run: |
+          node scripts/innovation-deepen.mjs
+          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('.elite/innovation-opportunities.json'));if(x.standalone!==true||!Array.isArray(x.opportunities))process.exit(1);for(const o of x.opportunities){if(!o.explanation||!o.buyer||!o.problem||!Array.isArray(o.measurable_outcomes))process.exit(1)}"

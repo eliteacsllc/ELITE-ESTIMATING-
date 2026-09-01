@@ -1,0 +1,21 @@
+name: Innovation Export Safety
+on:
+  push:
+    branches: [innovation-intelligence]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate and verify safe export
+        run: |
+          node scripts/innovation-export.mjs
+          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('.elite/innovation-export.json'));if(x.schema!=='elite-innovation-export/v1'||x.standalone!==true)process.exit(1);const s=JSON.stringify(x).toLowerCase();for(const q of ['api_key','password','private_key','access_token','refresh_token','customer_data','runtime_authority','source_code'])if(s.includes(q))process.exit(1);"
