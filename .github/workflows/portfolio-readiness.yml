@@ -1,0 +1,49 @@
+name: Portfolio Production Readiness
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate readiness contract
+        run: |
+          set -euo pipefail
+          test -f production-readiness.json
+          python3 -m json.tool production-readiness.json >/dev/null
+      - name: Reject committed production secrets
+        run: |
+          set -euo pipefail
+          bad=$(git ls-files | grep -E '(^|/)(\.env|\.env\.production|id_rsa|id_ed25519|.*\.pem|.*\.key)$' | grep -vE '(example|sample|template|public)' || true)
+          test -z "$bad" || { echo "$bad"; exit 1; }
+      - uses: actions/setup-node@v4
+        if: hashFiles('**/package.json') != ''
+        with: {node-version: '20'}
+      - name: Node checks
+        if: hashFiles('**/package.json') != ''
+        run: |
+          set -euo pipefail
+          corepack enable || true
+          if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; pnpm run lint --if-present; pnpm run typecheck --if-present; pnpm run test --if-present; pnpm run build --if-present;
+          elif [ -f yarn.lock ]; then yarn install --immutable || yarn install --frozen-lockfile; yarn run lint || true; yarn run typecheck || true; yarn run test || true; yarn run build || true;
+          else if [ -f package-lock.json ]; then npm ci; else npm install; fi; npm run lint --if-present; npm run typecheck --if-present; npm run test --if-present; npm run build --if-present; fi
+      - uses: actions/setup-python@v5
+        if: hashFiles('**/requirements.txt', '**/pyproject.toml', '**/setup.py') != ''
+        with: {python-version: '3.12'}
+      - name: Python checks
+        if: hashFiles('**/requirements.txt', '**/pyproject.toml', '**/setup.py') != ''
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          python -m compileall -q .
+          if [ -d tests ] || find . -maxdepth 3 -name 'test_*.py' -print -quit | grep -q .; then python -m pip install pytest; python -m pytest -q; fi
+      - name: Merge-conflict check
+        run: |
+          if git grep -nE '<<<<<<<|>>>>>>>' -- ':!*.lock' ':!package-lock.json' ':!pnpm-lock.yaml' ':!yarn.lock'; then exit 1; fi
