@@ -1,0 +1,9 @@
+{
+  "standard": "elite-production-reliability-v1",
+  "status": "verification-required",
+  "definition_of_done": "code+ui+backend+data+permissions+errors+logs+tests+integration+production-equivalent+rollback",
+  "required_gates": ["build","unit-tests","integration-tests","e2e-critical-journeys","schema-migrations","config-preflight","security","rbac-tenant-isolation-if-applicable","observability","backup-restore","rollback","exact-commit-provenance","staging-smoke","production-smoke","dns-https-redirects-if-web","provider-contract-tests"],
+  "launch_blockers": ["red-ci","disconnected-feature","unverified-integration","stale-deployment-proof","missing-migration","broken-navigation-or-action","missing-required-secret","failed-production-smoke"],
+  "human_intervention": "last-resort-only",
+  "certified": false
+}
