@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
       - name: Validate readiness contract
         run: |
           set -euo pipefail
@@ -22,9 +23,9 @@ jobs:
           set -euo pipefail
           bad=$(git ls-files | grep -E '(^|/)(\.env|\.env\.production|id_rsa|id_ed25519|.*\.pem|.*\.key)$' | grep -vE '(example|sample|template|public)' || true)
           test -z "$bad" || { echo "$bad"; exit 1; }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         if: hashFiles('**/package.json') != ''
-        with: {node-version: '20'}
+        with: {node-version: '22'}
       - name: Node checks
         if: hashFiles('**/package.json') != ''
         run: |
@@ -33,7 +34,7 @@ jobs:
           if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; pnpm run lint --if-present; pnpm run typecheck --if-present; pnpm run test --if-present; pnpm run build --if-present;
           elif [ -f yarn.lock ]; then yarn install --immutable || yarn install --frozen-lockfile; yarn run lint || true; yarn run typecheck || true; yarn run test || true; yarn run build || true;
           else if [ -f package-lock.json ]; then npm ci; else npm install; fi; npm run lint --if-present; npm run typecheck --if-present; npm run test --if-present; npm run build --if-present; fi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         if: hashFiles('**/requirements.txt', '**/pyproject.toml', '**/setup.py') != ''
         with: {python-version: '3.12'}
       - name: Python checks
@@ -45,5 +46,15 @@ jobs:
           python -m compileall -q .
           if [ -d tests ] || find . -maxdepth 3 -name 'test_*.py' -print -quit | grep -q .; then python -m pip install pytest; python -m pytest -q; fi
       - name: Merge-conflict check
+        shell: bash
         run: |
-          if git grep -nE '<<<<<<<|>>>>>>>' -- ':!*.lock' ':!package-lock.json' ':!pnpm-lock.yaml' ':!yarn.lock'; then exit 1; fi
+          python3 - <<'PY'
+          import pathlib,sys
+          skip={'.git','node_modules','dist','build','.next','coverage','vendor','.venv','venv'}; markers=('<'*7,'='*7,'>'*7); bad=[]
+          for p in pathlib.Path('.').rglob('*'):
+              if not p.is_file() or any(x in skip for x in p.parts) or p.name.endswith('.lock') or p.name in {'package-lock.json','pnpm-lock.yaml','yarn.lock'}: continue
+              try: t=p.read_text(errors='ignore')
+              except Exception: continue
+              if any(m in t for m in markers): bad.append(str(p))
+          if bad: print('\n'.join(sorted(bad))); sys.exit(1)
+          PY
