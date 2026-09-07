@@ -1,0 +1,40 @@
+name: SOC 2 Compliance Gate
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  soc2-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Validate control layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          M=compliance/soc2/control-matrix.yml
+          test -f "$M" || { echo "::error::Missing $M"; exit 1; }
+          for t in security availability confidentiality processing_integrity privacy release_blocker; do grep -q "$t" "$M" || { echo "::error::Missing $t"; exit 1; }; done
+          grep -q 'certification_claim: false' "$M" || { echo '::error::Certification claim must remain false until independent audit'; exit 1; }
+      - name: Block tracked secret material
+        shell: bash
+        run: |
+          set -euo pipefail
+          F="$(git ls-files)"
+          if printf '%s\n' "$F" | grep -E '(^|/)(\.env|\.env\..+)$' | grep -vE '\.example$|\.sample$|\.template$'; then echo '::error::Tracked env secret file'; exit 1; fi
+          if printf '%s\n' "$F" | grep -E '\.(pem|p12|pfx|key)$'; then echo '::error::Tracked key material'; exit 1; fi
+          if git grep -n -I -E -- '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----' -- . ':!*.md' ':!*.txt' ':!tests/**' ':!fixtures/**'; then echo '::error::Private key header in source'; exit 1; fi
+      - name: Generate evidence
+        shell: bash
+        run: |
+          mkdir -p soc2-evidence
+          printf '# SOC 2 readiness evidence\n\nRepository: %s\nCommit: %s\nRun: %s\nGenerated: %s\n\n- Control matrix validated\n- Trust Service Criteria present\n- Tracked env/key checks passed\n\nAutomated readiness evidence; not a SOC 2 certification.\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > soc2-evidence/summary.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soc2-evidence-${{ github.sha }}
+          path: soc2-evidence/
+          retention-days: 90
