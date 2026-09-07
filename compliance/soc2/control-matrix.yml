@@ -1,0 +1,26 @@
+version: 1
+framework: SOC 2 readiness
+certification_claim: false
+release_blocker: true
+trust_service_criteria:
+  security:
+    required: true
+    controls: [least-privilege-access, secrets-management, audit-logging, vulnerability-management, tenant-isolation-when-applicable]
+  availability:
+    required: true
+    controls: [health-readiness-observability, backup-and-tested-restore-when-durable, incident-response-and-recovery]
+  confidentiality:
+    required: true
+    controls: [encryption-when-sensitive, data-minimization, retention-and-deletion]
+  processing_integrity:
+    required: true
+    controls: [ci-change-control, exact-head-verification, regression-validation, provenance, rollback-readiness]
+  privacy:
+    required: true
+    applicability: when_personal_data
+    controls: [purpose-and-consent, access-deletion-retention, vendor-and-data-flow-governance]
+evidence_requirements: [auth_rbac_tests, secret_scan, audit_log_tests, dependency_scan, isolation_tests_when_applicable, monitoring_evidence, restore_test_when_applicable, incident_runbook, encryption_configuration_when_applicable, unit_integration_e2e_results, build_provenance, privacy_evidence_when_applicable]
+release_requirements: [compliance_layer_present, soc2_gate_passes, no_tracked_env_secrets, no_private_keys_in_source, applicable_control_evidence_retained]
+notes:
+  - Readiness controls only; this does not represent a SOC 2 audit opinion or certification.
+  - Conditional controls become mandatory when the repository uses the corresponding capability or data class.
