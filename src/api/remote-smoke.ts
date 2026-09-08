@@ -39,8 +39,10 @@ const health = await expectJson(await fetch(`${base}/health`), 200);
 assert.equal(health.status, 'ok');
 const ready = await expectJson(await fetch(`${base}/ready`), 200);
 assert.equal(ready.status, 'ready');
-assert.equal(ready.rateLimitDurable, true);
-assert.equal(ready.rateLimitHealthy, true);
+const capabilities = ready.capabilities as Record<string, unknown> | undefined;
+assert.ok(capabilities, 'readiness must expose bounded capabilities');
+assert.equal(capabilities.governance, 'available');
+assert.equal(capabilities.idempotency, 'available');
 
 const idempotencyKey = `deployment-smoke-${runId}`;
 const createResponse = await fetch(`${base}/v1/estimates`, {
