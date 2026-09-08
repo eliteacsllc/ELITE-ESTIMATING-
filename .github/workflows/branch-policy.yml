@@ -15,7 +15,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$HEAD_REF" =~ ^(production|prod|staging|stage|develop|development|qa[-_/]?(final|v[0-9]+|[0-9]+)?|lab[-_/]?(final|v[0-9]+|[0-9]+)?|main[-_/]?(copy|final|v[0-9]+|[0-9]+))$ ]]; then echo "::error::Redundant environment branch '$HEAD_REF' is forbidden."; exit 1; fi
+          if [[ "$HEAD_REF" =~ ^((production|prod|staging|stage|develop|development)([0-9]+|[-_/](copy|final|v[0-9]+|[0-9]+))?|qa([0-9]+|[-_/](copy|final|v[0-9]+|[0-9]+))|lab([0-9]+|[-_/](copy|final|v[0-9]+|[0-9]+))|main([0-9]+|[-_/](copy|final|v[0-9]+|[0-9]+)))$ ]]; then echo "::error::Redundant environment branch '$HEAD_REF' is forbidden."; exit 1; fi
           if [[ "$BASE_REF" == "main" ]]; then [[ "$HEAD_REF" == "qa" ]] || { echo "::error::main accepts only qa."; exit 1; }; exit 0; fi
           if [[ "$BASE_REF" == "qa" ]]; then [[ "$HEAD_REF" == "lab" ]] || { echo "::error::qa accepts only lab."; exit 1; }; exit 0; fi
           if [[ "$BASE_REF" == "lab" ]]; then [[ "$HEAD_REF" == dependabot/* ]] && exit 0; echo "::error::Routine development is committed directly to lab."; exit 1; fi
