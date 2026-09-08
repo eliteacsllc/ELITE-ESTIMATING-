@@ -113,8 +113,7 @@ jobs:
           done
           cat /tmp/ready.json
           grep -q '"status":"ready"' /tmp/ready.json
-          grep -q '"rateLimitDurable":true' /tmp/ready.json
-          grep -q '"rateLimitHealthy":true' /tmp/ready.json
+          grep -q '"governance":"available"' /tmp/ready.json
           curl --fail --silent http://127.0.0.1:8787/health | grep -q '"status":"ok"'
           npm run smoke:http
           ELITE_SMOKE_BASE_URL=http://127.0.0.1:8787 npm run smoke:remote
