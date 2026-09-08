@@ -1,0 +1,22 @@
+name: Portfolio Branch Policy
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
+jobs:
+  validate-promotion-flow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce canonical release lanes
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$HEAD_REF" =~ ^(production|prod|staging|stage|develop|development|qa[-_/]?(final|v[0-9]+|[0-9]+)?|lab[-_/]?(final|v[0-9]+|[0-9]+)?|main[-_/]?(copy|final|v[0-9]+|[0-9]+))$ ]]; then echo "::error::Redundant environment branch '$HEAD_REF' is forbidden."; exit 1; fi
+          if [[ "$BASE_REF" == "main" ]]; then [[ "$HEAD_REF" == "qa" ]] || { echo "::error::main accepts only qa."; exit 1; }; exit 0; fi
+          if [[ "$BASE_REF" == "qa" ]]; then [[ "$HEAD_REF" == "lab" ]] || { echo "::error::qa accepts only lab."; exit 1; }; exit 0; fi
+          if [[ "$BASE_REF" == "lab" ]]; then [[ "$HEAD_REF" == dependabot/* ]] && exit 0; echo "::error::Routine development is committed directly to lab."; exit 1; fi
+          echo "::error::Canonical targets are lab, qa, and main."; exit 1
