@@ -10,7 +10,7 @@ jobs:
   soc2-readiness:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with: {fetch-depth: 0}
       - name: Validate control layer
         shell: bash
@@ -33,7 +33,7 @@ jobs:
         run: |
           mkdir -p soc2-evidence
           printf '# SOC 2 readiness evidence\n\nRepository: %s\nCommit: %s\nRun: %s\nGenerated: %s\n\n- Control matrix validated\n- Trust Service Criteria present\n- Tracked env/key checks passed\n\nAutomated readiness evidence; not a SOC 2 certification.\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > soc2-evidence/summary.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: soc2-evidence-${{ github.sha }}
           path: soc2-evidence/
