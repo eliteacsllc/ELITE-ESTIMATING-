@@ -1,0 +1,47 @@
+name: Elite Seamless Experience Gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  experience:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Validate seamless experience contract
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const fail = (m) => { console.error(`::error::${m}`); process.exitCode = 1; };
+          const contractPath = '.elite/seamless-experience.json';
+          if (!fs.existsSync(contractPath)) { fail('Missing seamless experience contract'); process.exit(); }
+          let c;
+          try { c = JSON.parse(fs.readFileSync(contractPath, 'utf8')); } catch { fail('Invalid seamless experience JSON'); process.exit(); }
+          if (c.corePrinciple !== 'frontend-simplicity-backend-complexity') fail('Core frontend/backend principle is not enforced');
+          if (c.qualityBar !== 'top-1-percent') fail('Top-1-percent quality bar is missing');
+          if (c.surface?.maxPrimaryActions !== 1) fail('Exactly one primary action must be the default');
+          for (const k of ['outcomeOriented','progressiveDisclosure','technicalInternalsHiddenByDefault','intelligentDefaults','preserveProgress','responsive','accessible']) if (c.surface?.[k] !== true) fail(`Missing surface requirement: ${k}`);
+          if (c.dashboard?.roleAware !== true) fail('Role-aware dashboards are required');
+          const questions = new Set(c.dashboard?.requiredQuestions || []);
+          for (const q of ['attentionNow','blockedOrAtRisk','whatChanged','performance','nextBestAction']) if (!questions.has(q)) fail(`Missing dashboard question: ${q}`);
+          if (c.workflow?.oneAuthoritativeStateMachine !== true) fail('Authoritative workflow state machine is required');
+          if (c.workflow?.exceptionDrivenHumanIntervention !== true) fail('Human intervention must be exception-driven');
+          const blockers = new Set(c.releaseBlockers || []);
+          for (const b of ['backendConceptLeak','multiplePrimaryActions','deadControl','deadEndFlow','uiAutomationLogicMismatch','avoidableManualStep']) if (!blockers.has(b)) fail(`Missing release blocker: ${b}`);
+          const brandPath = 'assets/elite-brand.css';
+          if (!fs.existsSync(brandPath)) fail('Missing local Elite brand asset');
+          else {
+            const css = fs.readFileSync(brandPath, 'utf8');
+            if (!css.includes('--elite-navy')) fail('Elite design token --elite-navy missing');
+            if (!css.includes('prefers-reduced-motion')) fail('Reduced-motion accessibility treatment missing');
+            if (!css.includes('focus-visible')) fail('Keyboard focus treatment missing');
+          }
+          if (!process.exitCode) console.log('Elite seamless experience gate passed.');
+          NODE
