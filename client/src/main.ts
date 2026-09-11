@@ -1,3 +1,5 @@
+import './elite-brand.css';
+
 const apiBase = (import.meta.env.VITE_ESTIMATING_API_ORIGIN || '').replace(/\/$/, '');
 
 function apiUrl(path: string): string {
@@ -8,53 +10,62 @@ const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('Missing #app root');
 
 app.innerHTML = `
-  <section class="shell">
-    <header>
+  <section class="elite-shell">
+    <header class="hero">
       <p class="eyebrow">Elite Estimating</p>
-      <h1>Cross-platform estimating workspace</h1>
-      <p>Web, mobile and desktop client boundary for estimates, photos, VIN data and documents.</p>
+      <h1>Build a complete estimate</h1>
+      <p class="lede">Add the vehicle and evidence you have. Elite handles the technical checks, source orchestration, and workflow behind the scenes.</p>
     </header>
-    <div class="grid">
-      <label class="card">
-        <strong>Vehicle / VIN</strong>
-        <input id="vin" inputmode="text" autocomplete="off" placeholder="Enter VIN" maxlength="17" />
+
+    <section class="progress" aria-label="Estimate setup progress">
+      <span class="progress-step is-active">1. Vehicle</span>
+      <span class="progress-step">2. Evidence</span>
+      <span class="progress-step">3. Review</span>
+    </section>
+
+    <div class="elite-grid setup-grid">
+      <label class="elite-card field-card" for="vin">
+        <span class="step-label">Vehicle</span>
+        <strong>VIN</strong>
+        <span class="help">Enter the 17-character VIN. We’ll use it to prepare the correct vehicle context.</span>
+        <input id="vin" inputmode="text" autocomplete="off" placeholder="Enter VIN" maxlength="17" aria-describedby="vin-help" />
+        <small id="vin-help" class="field-status">17 characters required</small>
       </label>
-      <label class="card">
+
+      <label class="elite-card field-card" for="photos">
+        <span class="step-label">Evidence</span>
         <strong>Damage photos</strong>
+        <span class="help">Add the clearest photos you have. More can be added later.</span>
         <input id="photos" type="file" accept="image/*" capture="environment" multiple />
-        <span id="photo-count">No photos selected</span>
+        <span id="photo-count" class="field-status" aria-live="polite">No photos selected</span>
       </label>
-      <label class="card">
-        <strong>Claim / registration documents</strong>
+
+      <label class="elite-card field-card" for="documents">
+        <span class="step-label">Documents</span>
+        <strong>Claim or registration</strong>
+        <span class="help">Optional for now. Add PDFs or images if they’re available.</span>
         <input id="documents" type="file" accept="image/*,application/pdf" multiple />
-        <span id="document-count">No documents selected</span>
+        <span id="document-count" class="field-status" aria-live="polite">No documents selected</span>
       </label>
-      <div class="card">
-        <strong>Backend</strong>
-        <code>${apiBase || 'same-origin web API'}</code>
-        <button id="health" type="button">Check API</button>
-        <span id="health-status">Not checked</span>
-      </div>
     </div>
+
+    <section class="action-zone" aria-label="Next action">
+      <div>
+        <strong>Ready when you are</strong>
+        <p id="readiness-copy">Enter a VIN to continue. Evidence can be added now or later.</p>
+      </div>
+      <button id="continue" class="elite-action elite-action--primary" type="button" disabled>Continue estimate</button>
+    </section>
+
+    <details class="support-details">
+      <summary>Having trouble?</summary>
+      <div class="support-content">
+        <p id="service-status">Elite services are checked automatically when needed.</p>
+        <button id="health" class="elite-action elite-action--secondary" type="button">Check service status</button>
+      </div>
+    </details>
   </section>
 `;
-
-const style = document.createElement('style');
-style.textContent = `
-  :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; background:#070b16; color:#f8fafc; }
-  * { box-sizing:border-box; }
-  body { margin:0; min-width:320px; min-height:100vh; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-  .shell { max-width:1100px; margin:auto; padding:32px 20px; }
-  .eyebrow { text-transform:uppercase; letter-spacing:.18em; font-size:12px; color:#7dd3fc; font-weight:800; }
-  h1 { font-size:clamp(32px,7vw,64px); line-height:1; margin:.25em 0; }
-  header p:last-child { color:#a5b4c8; max-width:760px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin-top:28px; }
-  .card { display:flex; flex-direction:column; gap:12px; padding:18px; border:1px solid #26324a; border-radius:18px; background:#0d1424; min-height:150px; }
-  input, button { width:100%; min-height:44px; border-radius:10px; border:1px solid #334155; background:#111827; color:#fff; padding:10px 12px; }
-  button { cursor:pointer; font-weight:700; }
-  code, span { color:#94a3b8; overflow-wrap:anywhere; }
-`;
-document.head.appendChild(style);
 
 function bindFileCount(id: string, outputId: string, noun: string) {
   const input = document.querySelector<HTMLInputElement>(`#${id}`);
@@ -68,13 +79,41 @@ function bindFileCount(id: string, outputId: string, noun: string) {
 bindFileCount('photos', 'photo-count', 'photo');
 bindFileCount('documents', 'document-count', 'document');
 
+const vin = document.querySelector<HTMLInputElement>('#vin');
+const continueButton = document.querySelector<HTMLButtonElement>('#continue');
+const readinessCopy = document.querySelector<HTMLElement>('#readiness-copy');
+const vinHelp = document.querySelector<HTMLElement>('#vin-help');
+
+function updateReadiness() {
+  const value = (vin?.value || '').trim().toUpperCase();
+  if (vin && vin.value !== value) vin.value = value;
+  const valid = /^[A-HJ-NPR-Z0-9]{17}$/.test(value);
+  if (continueButton) continueButton.disabled = !valid;
+  if (vinHelp) vinHelp.textContent = valid ? 'Vehicle ready' : `${Math.min(value.length, 17)} of 17 characters`;
+  if (readinessCopy) readinessCopy.textContent = valid
+    ? 'Vehicle ready. Continue to review the evidence and estimate setup.'
+    : 'Enter a VIN to continue. Evidence can be added now or later.';
+}
+
+vin?.addEventListener('input', updateReadiness);
+updateReadiness();
+
+continueButton?.addEventListener('click', () => {
+  document.querySelector('.progress-step:nth-child(1)')?.classList.remove('is-active');
+  document.querySelector('.progress-step:nth-child(2)')?.classList.add('is-active');
+  document.querySelector<HTMLInputElement>('#photos')?.focus();
+  if (readinessCopy) readinessCopy.textContent = 'Vehicle complete. Add available evidence, then continue into review.';
+});
+
 document.querySelector<HTMLButtonElement>('#health')?.addEventListener('click', async () => {
-  const status = document.querySelector<HTMLElement>('#health-status');
-  if (status) status.textContent = 'Checking…';
+  const status = document.querySelector<HTMLElement>('#service-status');
+  if (status) status.textContent = 'Checking service availability…';
   try {
     const response = await fetch(apiUrl('/health'), { credentials: 'include' });
-    if (status) status.textContent = response.ok ? 'API reachable' : `API returned ${response.status}`;
+    if (status) status.textContent = response.ok
+      ? 'Elite services are available.'
+      : 'A service is temporarily unavailable. Your work is safe; try again shortly.';
   } catch {
-    if (status) status.textContent = 'API unavailable';
+    if (status) status.textContent = 'We could not reach the service. Your work is safe; try again when you are connected.';
   }
 });
