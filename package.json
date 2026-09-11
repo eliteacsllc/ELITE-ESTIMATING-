@@ -31,7 +31,8 @@
     "desktop:dev": "npm run build:client && npx --yes @tauri-apps/cli@2.11.4 dev",
     "desktop:build": "npm run build:client && npx --yes @tauri-apps/cli@2.11.4 build",
     "portfolio:gate": "node scripts/portfolio-gate.mjs",
-    "verify": "npm run runtime:smoke && npm run portfolio:gate && npm run typecheck && npm test && npm run build:client"
+    "experience:verify": "node .elite/validate-seamless-experience.mjs",
+    "verify": "npm run experience:verify && npm run runtime:smoke && npm run portfolio:gate && npm run typecheck && npm test && npm run build:client"
   },
   "engines": { "node": ">=22" },
   "dependencies": {
