@@ -21,6 +21,7 @@
     "benchmark:certify": "node dist/benchmarks/certification-cli.js",
     "competitive:check": "node dist/platform/competitive-stack-cli.js",
     "launch:final": "node dist/launch/final-cli.js",
+    "revenue:preflight": "node scripts/revenue-core-preflight.mjs",
     "production:secrets": "node scripts/prepare-production-secrets.mjs",
     "dispatch:outbox": "node dist/integrations/dispatch-worker.js",
     "mobile:sync": "npm run build:client && npx --yes @capacitor/cli@8.5.0 sync",
