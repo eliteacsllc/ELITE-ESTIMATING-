@@ -1,0 +1,17 @@
+name: Elite Release Gate
+on: [push, pull_request, workflow_dispatch]
+permissions: {contents: read}
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -u; fail=0
+          need(){ ok=0; for p in "$@"; do [ -e "$p" ] && ok=1; done; [ "$ok" = 1 ] || fail=1; }
+          need RELEASE_READINESS.md; need README.md docs; need ARCHITECTURE.md docs/architecture.md docs/ARCHITECTURE.md; need TESTING.md docs/testing.md tests test __tests__; need DEPLOYMENT.md docs/deployment.md Dockerfile docker-compose.yml compose.yml infra deploy; need IP_PROVENANCE.md docs/ip-provenance.md LICENSE NOTICE; need OWNERSHIP.md docs/ownership.md CODEOWNERS .github/CODEOWNERS
+          git ls-files | grep -Eq '\.(ts|tsx|js|jsx|py|rs|go|java|kt|swift|c|cc|cpp|h|hpp|cs|rb|php|sh|sql|proto|html|css|vue|svelte)$' || fail=1
+          git ls-files | grep -Eq '(^|/)(test|tests|__tests__)/|\.(test|spec)\.' || fail=1
+          grep -Eq '^[-*] \[ \]' RELEASE_READINESS.md 2>/dev/null && fail=1 || true
+          [ "$fail" = 0 ] || { echo 'Release evidence incomplete'; exit 1; }
