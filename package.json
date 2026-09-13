@@ -21,6 +21,7 @@
     "benchmark:certify": "node dist/benchmarks/certification-cli.js",
     "competitive:check": "node dist/platform/competitive-stack-cli.js",
     "launch:final": "node dist/launch/final-cli.js",
+    "revenue:preflight": "node scripts/revenue-core-preflight.mjs",
     "production:secrets": "node scripts/prepare-production-secrets.mjs",
     "dispatch:outbox": "node dist/integrations/dispatch-worker.js",
     "mobile:sync": "npm run build:client && npx --yes @capacitor/cli@8.5.0 sync",
@@ -31,7 +32,8 @@
     "desktop:dev": "npm run build:client && npx --yes @tauri-apps/cli@2.11.4 dev",
     "desktop:build": "npm run build:client && npx --yes @tauri-apps/cli@2.11.4 build",
     "portfolio:gate": "node scripts/portfolio-gate.mjs",
-    "verify": "npm run runtime:smoke && npm run portfolio:gate && npm run typecheck && npm test && npm run build:client"
+    "experience:verify": "node .elite/validate-seamless-experience.mjs",
+    "verify": "npm run experience:verify && npm run runtime:smoke && npm run portfolio:gate && npm run typecheck && npm test && npm run build:client"
   },
   "engines": { "node": ">=22" },
   "dependencies": {

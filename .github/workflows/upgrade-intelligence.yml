@@ -1,0 +1,12 @@
+name: Upgrade Intelligence
+on:
+  schedule:
+    - cron: '17 11 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  scan:
+    uses: eliteacsllc/elite-sdk/.github/workflows/reusable-upgrade-intelligence.yml@main
+    secrets: inherit

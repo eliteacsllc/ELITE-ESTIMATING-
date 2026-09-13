@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "required": true,
+  "mode": "structural-semantic",
+  "canonical_engine": "eliteacsllc/elite-developers-playground-",
+  "keyword_search_is_authoritative": false,
+  "index": ["files","symbols","dependencies","routes","data-contracts","config","capabilities","duplicates","semantic-reuse"],
+  "reuse_policy": "evaluate-before-rebuild",
+  "standalone_boundary": true
+}
