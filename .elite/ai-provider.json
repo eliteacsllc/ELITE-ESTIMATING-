@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "defaultMode": "blackbox-first",
+  "blackboxProviderId": "blackbox",
+  "providerModes": ["blackbox-first", "app-provider-first", "manual", "offline-only"],
+  "fallbackOnlyWhenPrimaryUnavailable": true,
+  "preserveAppOperationWhenBlackboxUnavailable": true,
+  "requireHealthChecks": true,
+  "externalFallbackOptIn": true,
+  "auditProviderSelection": true,
+  "adminProviderSelector": true,
+  "rules": {
+    "preferBlackboxWhenHealthy": true,
+    "allowConfiguredStandaloneProvider": true,
+    "allowLocalProvider": true,
+    "neverHardFailSolelyBecauseBlackboxIsUnavailable": true
+  }
+}

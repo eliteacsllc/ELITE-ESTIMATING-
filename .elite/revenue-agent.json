@@ -1,0 +1,16 @@
+{
+  "schemaVersion":"elite.revenue-agent.v1",
+  "product":"elite-estimating",
+  "service":"estimate-intake-agent",
+  "channels":["web","email","form","api"],
+  "intents":["sales","service_request","claim","support","billing","unknown"],
+  "capabilities":[
+    {"name":"estimating.services.read","description":"Read approved estimating services and intake requirements","operation":"estimating.services.read","risk":"read"},
+    {"name":"estimate.request.create","description":"Create a tenant-scoped estimate request","operation":"estimate.request.create","risk":"internal_write","requiredFields":["contact","assignmentType"]},
+    {"name":"evidence.checklist.create","description":"Create the required evidence and document checklist","operation":"evidence.checklist.create","risk":"internal_write","requiredFields":["requestId"]},
+    {"name":"estimate.status.read","description":"Read an authorized request status","operation":"estimate.status.read","risk":"read"},
+    {"name":"estimate.deliver","description":"Deliver an approved estimate externally only after QA and recipient verification","operation":"estimate.deliver","risk":"external_write","requiresApproval":true}
+  ],
+  "knowledgePolicy":{"requireApprovedFacts":true,"maxFactAgeDays":14,"unsupportedAnswerBehavior":"handoff"},
+  "handoff":{"confidenceBelow":0.85,"alwaysForRisks":["external_write","irreversible"],"destinations":["estimating-ops","owner"]}
+}
