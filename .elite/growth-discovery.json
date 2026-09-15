@@ -1,0 +1,12 @@
+{
+  "schemaVersion":"elite.growth-discovery.v1",
+  "product":"Elite Estimating",
+  "category":"automotive estimating software",
+  "audiences":["estimators","body shops","appraisal companies","claims teams"],
+  "problems":["slow estimate creation","missed operations","reference fragmentation","estimate consistency"],
+  "capabilities":["estimate authoring","repair-operation guidance","QA integration","documentation workflow"],
+  "evidence":["repository documentation","integration design","tests and release evidence"],
+  "dealTypes":["software subscription","enterprise license","portfolio integration"],
+  "conversionEvents":["discovery","engaged","lead","qualified","trial","estimate-created","won","retained","referred"],
+  "zeroBudgetChannels":["organic-search","ai-answer","technical demos","body-shop outreach","estimator communities","referrals","free estimate audit"]
+}
