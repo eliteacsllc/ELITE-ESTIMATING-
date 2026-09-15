@@ -1,0 +1,1 @@
+{"schemaVersion":"elite.integration-compatibility-v1","canonicalSource":"@elite/sdk","contractSchema":"elite.integration-envelope-v1","contractVersion":"1.0.0","payload":{"assignmentId":"assignment-a","imageId":"image-a","nested":{"b":2,"a":1}},"payloadSha256":"7d4c83bc042ed0a9336bac6637112d34450d5c01ee9751df61374607cfba7b02"}
