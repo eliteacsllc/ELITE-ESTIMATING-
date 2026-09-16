@@ -3,6 +3,7 @@ import { calculateMarketValuation } from './market-valuation.js';
 import { calculateDiminishedValue } from './diminished-value.js';
 import { createFairMarketValuePacket, createDiminishedValuePacket } from './report-packet.js';
 import { createValuationRevision } from './revisions.js';
+import { createDemandLetter } from './demand-letter.js';
 
 export type ValuationHttpRequest = {
   kind: 'market_value' | 'diminished_value';
@@ -16,7 +17,23 @@ export type ValuationHttpRequest = {
   damageAdjustments?: Record<string, unknown>[];
   postLossMarketEvidence?: number;
   reason?: string;
+  demand?: {
+    claimantName?: string;
+    insurerName?: string;
+    claimNumber?: string;
+    vehicleDescription?: string;
+    lossDate?: string;
+    requestedAmount?: number;
+    responseDeadlineDays?: number;
+    senderName?: string;
+    senderCompany?: string;
+  };
 };
+
+function demandDraft(input: ValuationHttpRequest, revision: ReturnType<typeof createValuationRevision>) {
+  if (!input.demand) return undefined;
+  return createDemandLetter({ ...input.demand, claimNumber: input.demand.claimNumber ?? input.claimId, valuation: revision });
+}
 
 export function runValuationRequest(actor: Principal, input: ValuationHttpRequest) {
   if (!input || (input.kind !== 'market_value' && input.kind !== 'diminished_value')) throw new Error('valuation_kind_required');
@@ -39,7 +56,7 @@ export function runValuationRequest(actor: Principal, input: ValuationHttpReques
       reason: input.reason ?? 'preliminary_market_valuation',
       result,
     });
-    return { result, revision, report: createFairMarketValuePacket({ claimId: input.claimId, result }) };
+    return { result, revision, report: createFairMarketValuePacket({ claimId: input.claimId, result }), demandLetterDraft: demandDraft(input, revision) };
   }
 
   const result = calculateDiminishedValue({
@@ -59,5 +76,5 @@ export function runValuationRequest(actor: Principal, input: ValuationHttpReques
     reason: input.reason ?? 'preliminary_diminished_value',
     result,
   });
-  return { result, revision, report: createDiminishedValuePacket({ claimId: input.claimId, result }) };
+  return { result, revision, report: createDiminishedValuePacket({ claimId: input.claimId, result }), demandLetterDraft: demandDraft(input, revision) };
 }
