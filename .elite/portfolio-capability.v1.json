@@ -1,0 +1,11 @@
+{
+  "schemaVersion":"elite.portfolio-capability.v1",
+  "repo":"ELITE-ESTIMATING-",
+  "role":"revenue-domain-product",
+  "owns":["estimate-authoring","estimate-line-domain-rules","estimate-review-workflows","estimating-domain-calculations"],
+  "consumes":["elite-sdk","blackbox","elite-qa-","estimatics-library","elite-damage-iq","elite-trust-id-"],
+  "mustNotOwn":["generic-qa-engine","identity-source-of-truth","portfolio-intelligence-core","generic-repair-knowledge-store"],
+  "requiredControls":["evidence-provenance","human-approval","versioned-estimates","auditability","data-source-attribution","fallback-mode"],
+  "standaloneMode":true,
+  "degradedMode":true
+}
