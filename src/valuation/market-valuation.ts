@@ -2,6 +2,10 @@ export type MoneySource = {
   name: string;
   value: number;
   weight?: number;
+  sourceUrl?: string;
+  retrievedAt?: string;
+  licenseRef?: string;
+  evidenceHash?: string;
 };
 
 export type ComparableVehicle = {
@@ -16,9 +20,14 @@ export type ComparableVehicle = {
   equipment?: string[];
   distanceMiles?: number;
   sold?: boolean;
+  sellerName?: string;
+  listingStatus?: string;
   source?: string;
   sourceUrl?: string;
   retrievedAt?: string;
+  sourceEvidenceHash?: string;
+  sourceSnapshotKey?: string;
+  sourceSnapshotMimeType?: string;
 };
 
 export type SubjectVehicle = {
@@ -68,6 +77,10 @@ export type ValuationResult = {
     sourceUrl?: string;
     retrievedAt?: string;
     value: number;
+    evidenceHash?: string;
+    snapshotKey?: string;
+    snapshotMimeType?: string;
+    licenseRef?: string;
   }>;
 };
 
@@ -155,11 +168,31 @@ export function calculateMarketValuation(input: {
   const averageScore = selected.reduce((a, c) => a + c.matchScore, 0) / selected.length;
   const countFactor = Math.min(1, selected.length / 6);
   const provenanceFactor = selected.filter((c) => c.sourceUrl && c.retrievedAt).length / selected.length;
-  const confidence = round(Math.max(0, Math.min(100, averageScore * 0.65 + countFactor * 20 + provenanceFactor * 15)));
+  const integrityFactor = selected.filter((c) => c.sourceEvidenceHash || c.sourceSnapshotKey).length / selected.length;
+  const confidence = round(Math.max(0, Math.min(100, averageScore * 0.6 + countFactor * 20 + provenanceFactor * 10 + integrityFactor * 10)));
 
   const evidence = [
-    ...selected.map((c) => ({ type: 'comparable' as const, id: c.id, source: c.source, sourceUrl: c.sourceUrl, retrievedAt: c.retrievedAt, value: c.adjustedPrice })),
-    ...(input.bookSources ?? []).map((s) => ({ type: 'book_source' as const, id: s.name, source: s.name, value: round(s.value) })),
+    ...selected.map((c) => ({
+      type: 'comparable' as const,
+      id: c.id,
+      source: c.source,
+      sourceUrl: c.sourceUrl,
+      retrievedAt: c.retrievedAt,
+      value: c.adjustedPrice,
+      evidenceHash: c.sourceEvidenceHash,
+      snapshotKey: c.sourceSnapshotKey,
+      snapshotMimeType: c.sourceSnapshotMimeType,
+    })),
+    ...(input.bookSources ?? []).map((s) => ({
+      type: 'book_source' as const,
+      id: s.name,
+      source: s.name,
+      sourceUrl: s.sourceUrl,
+      retrievedAt: s.retrievedAt,
+      value: round(s.value),
+      evidenceHash: s.evidenceHash,
+      licenseRef: s.licenseRef,
+    })),
   ];
 
   return {
