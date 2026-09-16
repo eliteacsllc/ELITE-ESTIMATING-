@@ -1,6 +1,7 @@
 import type { ReportPacket } from './report-packet.js';
 
-const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]||ch));
+const ESCAPE_MAP:Record<string,string>={"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"};
+const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,ch=>ESCAPE_MAP[ch]??ch);
 const money=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(n)||0);
 
 export function renderValuationReportHtml(packet:ReportPacket):string{
