@@ -43,6 +43,7 @@ export * from './valuation/diminished-value.js';
 export * from './valuation/report-packet.js';
 export * from './valuation/report-html.js';
 export * from './valuation/provider.js';
+export * from './valuation/evidence-capture.js';
 export * from './valuation/revisions.js';
 export * from './valuation/http.js';
 export * from './valuation/demand-letter.js';
