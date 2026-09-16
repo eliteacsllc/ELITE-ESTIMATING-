@@ -41,6 +41,7 @@ export * from './engine/total-loss.js';
 export * from './valuation/market-valuation.js';
 export * from './valuation/diminished-value.js';
 export * from './valuation/report-packet.js';
+export * from './valuation/report-html.js';
 export * from './valuation/provider.js';
 export * from './valuation/revisions.js';
 export * from './valuation/http.js';
