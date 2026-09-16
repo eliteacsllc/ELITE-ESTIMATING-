@@ -1,7 +1,8 @@
 import type { Principal } from '../security/rbac.js';
 import { calculateMarketValuation } from './market-valuation.js';
 import { calculateDiminishedValue } from './diminished-value.js';
-import { createFairMarketValuePacket, createDiminishedValuePacket } from './report-packet.js';
+import { buildFairMarketValuePacket, buildDiminishedValuePacket } from './report-packet.js';
+import { renderValuationReportHtml } from './report-html.js';
 import { createValuationRevision } from './revisions.js';
 import { createDemandLetter } from './demand-letter.js';
 
@@ -35,6 +36,17 @@ function demandDraft(input: ValuationHttpRequest, revision: ReturnType<typeof cr
   return createDemandLetter({ ...input.demand, claimNumber: input.demand.claimNumber ?? input.claimId, valuation: revision });
 }
 
+function subjectForReport(subject: Record<string, unknown>) {
+  return {
+    vin: typeof subject.vin === 'string' ? subject.vin : undefined,
+    year: typeof subject.year === 'number' ? subject.year : undefined,
+    make: typeof subject.make === 'string' ? subject.make : undefined,
+    model: typeof subject.model === 'string' ? subject.model : undefined,
+    trim: typeof subject.trim === 'string' ? subject.trim : undefined,
+    mileage: typeof subject.mileage === 'number' ? subject.mileage : undefined,
+  };
+}
+
 export function runValuationRequest(actor: Principal, input: ValuationHttpRequest) {
   if (!input || (input.kind !== 'market_value' && input.kind !== 'diminished_value')) throw new Error('valuation_kind_required');
   if (!input.subject || typeof input.subject !== 'object') throw new Error('valuation_subject_required');
@@ -56,7 +68,8 @@ export function runValuationRequest(actor: Principal, input: ValuationHttpReques
       reason: input.reason ?? 'preliminary_market_valuation',
       result,
     });
-    return { result, revision, report: createFairMarketValuePacket({ claimId: input.claimId, result }), demandLetterDraft: demandDraft(input, revision) };
+    const report = buildFairMarketValuePacket(subjectForReport(input.subject), result);
+    return { result, revision, report, reportHtml: renderValuationReportHtml(report), demandLetterDraft: demandDraft(input, revision) };
   }
 
   const result = calculateDiminishedValue({
@@ -76,5 +89,6 @@ export function runValuationRequest(actor: Principal, input: ValuationHttpReques
     reason: input.reason ?? 'preliminary_diminished_value',
     result,
   });
-  return { result, revision, report: createDiminishedValuePacket({ claimId: input.claimId, result }), demandLetterDraft: demandDraft(input, revision) };
+  const report = buildDiminishedValuePacket(subjectForReport(input.subject), result);
+  return { result, revision, report, reportHtml: renderValuationReportHtml(report), demandLetterDraft: demandDraft(input, revision) };
 }
