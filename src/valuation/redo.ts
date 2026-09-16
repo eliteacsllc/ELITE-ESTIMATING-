@@ -20,11 +20,15 @@ export type ValuationRedoInput = {
 
 export async function redoValuationWithWiderSearch(input: ValuationRedoInput) {
   if (!input.priorRevision?.id) throw new Error('prior_revision_required');
-  const priorRadius = Number((input.priorRevision.metadata as Record<string, unknown> | undefined)?.searchRadiusMiles ?? 25);
-  const start = Math.max(Number(input.startRadiusMiles ?? priorRadius * 2), priorRadius + 1);
+  const start = Math.max(26, Number(input.startRadiusMiles ?? 50));
   const search = await searchComparablesWithExpansion({
     provider: input.provider,
-    request: { subject: input.subject, postalCode: input.postalCode, limit: Math.max(6, input.targetCount ?? 8), includeSold: true } as Omit<ComparableSearchRequest, 'radiusMiles'>,
+    request: {
+      subject: input.subject,
+      postalCode: input.postalCode,
+      limit: Math.max(6, input.targetCount ?? 8),
+      includeSold: true,
+    } as Omit<ComparableSearchRequest, 'radiusMiles'>,
     initialRadiusMiles: start,
     maxRadiusMiles: Math.max(start, Number(input.maxRadiusMiles ?? 500)),
     targetCount: Math.max(1, Number(input.targetCount ?? 8)),
@@ -41,15 +45,9 @@ export async function redoValuationWithWiderSearch(input: ValuationRedoInput) {
     claimId: input.priorRevision.claimId,
     kind: input.priorRevision.kind,
     createdBy: input.requestedBy,
-    reason: 'redo_wider_market_search',
-    supersedes: input.priorRevision.id,
+    reason: `redo_wider_market_search:${search.radiusMiles}mi`,
+    supersedes: input.priorRevision,
     result,
-    metadata: {
-      searchRadiusMiles: search.radiusMiles,
-      attemptedRadii: search.attemptedRadii,
-      provider: search.provider,
-      sourceRequestId: search.sourceRequestId,
-    },
   });
   return { search, result, revision };
 }
