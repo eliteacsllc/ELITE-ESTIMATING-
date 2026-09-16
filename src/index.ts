@@ -43,6 +43,7 @@ export * from './valuation/diminished-value.js';
 export * from './valuation/report-packet.js';
 export * from './valuation/provider.js';
 export * from './valuation/revisions.js';
+export * from './valuation/http.js';
 export * from './application/estimating-service.js';
 export * from './application/idempotent-estimate-create.js';
 export * from './application/supplement-service.js';
