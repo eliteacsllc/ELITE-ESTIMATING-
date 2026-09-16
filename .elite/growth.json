@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0",
+  "product": {"name": "Elite Estimating", "repository": "eliteacsllc/ELITE-ESTIMATING-", "category": "estimating-platform", "platforms": ["web"]},
+  "businessModel": {"primary": "subscription", "secondary": ["enterprise-license", "services"]},
+  "funnel": ["visitor", "signup_completed", "onboarding_completed", "aha_event", "trial_started", "subscription_started", "retained_30d", "referral_converted"],
+  "channels": ["industry-outreach", "seo", "referral", "partnerships", "content", "email", "paid-after-validation"],
+  "metrics": ["activation_rate", "estimate_completion_rate", "trial_to_paid", "retention_30d", "cac", "arpu", "ltv", "contribution_margin"],
+  "integrations": {"blackBox": true, "echelon": true, "jetStream": true, "eliteQA": true, "aiMedia": true, "elitePublishing": true, "eliteWebBuilder": true, "eliteTransactionsFinance": true},
+  "zeroBudgetFirst": true,
+  "humanApproval": ["paid-spend-increase", "pricing-change", "unverified-data-claim"]
+}
