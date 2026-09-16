@@ -1,0 +1,26 @@
+repo: eliteacsllc/ELITE-ESTIMATING-
+product: Elite Estimating
+version: "1"
+source_ref: main
+audiences: [estimator, appraiser, qa]
+sensitive_data: [vin, claim-data, customer-pii]
+tutorials:
+  - id: overview
+    title: Elite Estimating overview
+    type: overview
+    goal: Show evidence-backed estimate creation and QA.
+    audience: [estimator, appraiser]
+    max_seconds: 90
+    steps: [Open synthetic vehicle, Add damage operations, Attach evidence, Review calculations, Run QA, Export estimate]
+    failure_recovery: [Correct an unsupported operation or failed calculation]
+    outputs: [16x9, 9x16, thumbnail, captions, transcript, chapters, storyboard]
+  - id: quickstart
+    title: Build the first verified estimate
+    type: quickstart
+    goal: Create one reproducible estimate from synthetic damage data.
+    audience: [estimator, qa]
+    max_seconds: 420
+    steps: [Create job, Add vehicle, Add repair operations, Review rates and totals, Run evidence checks, Approve and export]
+    failure_recovery: [Resolve missing evidence and calculation mismatch]
+    outputs: [16x9, captions, transcript, chapters, storyboard]
+qa: {accuracy: true, privacy: true, accessibility: true, freshness: true, require_human_approval: true}
