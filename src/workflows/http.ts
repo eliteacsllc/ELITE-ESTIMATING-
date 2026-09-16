@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { EstimatingService, UpdateEstimateDomainWorkflowStepInput } from '../application/estimating-service.js';
 import type { Principal } from '../security/rbac.js';
 import type { RepairPlanningChecklist } from './repair-planning.js';
+import { runValuationRequest, type ValuationHttpRequest } from '../valuation/http.js';
 
 type Send = (res: ServerResponse, status: number, body: unknown, extra?: Record<string, string>) => void;
 type JsonReader = (req: IncomingMessage) => Promise<Record<string, unknown>>;
@@ -18,6 +19,13 @@ export type WorkflowHttpContext = {
 
 export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): Promise<boolean> {
   const { req, res, actor, parts, service, send, json } = context;
+
+  if (parts.length === 2 && parts[0] === 'v1' && parts[1] === 'valuations' && req.method === 'POST') {
+    const body = await json(req);
+    send(res, 200, runValuationRequest(actor, body as unknown as ValuationHttpRequest));
+    return true;
+  }
+
   if (parts[0] !== 'v1' || parts[1] !== 'estimates' || !parts[2]) return false;
   const estimateId = parts[2];
 
