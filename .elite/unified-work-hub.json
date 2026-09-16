@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "elite.unified-work-hub.v1",
+  "product": "elite-estimating",
+  "role": "estimating-consumer-and-producer",
+  "eventSources": ["email", "form", "portal", "chat", "sms"],
+  "correlation": ["contactId", "jobId", "claimId", "threadHint"],
+  "routes": {
+    "estimate_request": "estimating",
+    "supplement": "supplements",
+    "documentation": "documentation",
+    "qa_question": "quality-assurance",
+    "dispute": "human-review"
+  },
+  "automation": {
+    "responseSlaMinutes": 30,
+    "allowAutomatedOutbound": false,
+    "requireKnownConsentForAutomatedSms": true
+  },
+  "approvalGates": ["external_send", "estimate_release", "qa_override", "signature", "legal_attestation"],
+  "requiredCapabilities": ["tenant-isolation", "audit", "idempotency", "consent", "evidence", "provenance", "provider-neutral-transports"],
+  "sdkContract": "@elite/sdk unified-work-hub",
+  "status": "adopted"
+}
