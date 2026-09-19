@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
+import type { AssetIdentity } from '../domain/types.js';
 
 export type ClaimsInspectionEvent = {
   id: string;
@@ -7,7 +8,19 @@ export type ClaimsInspectionEvent = {
   tenant_id: string;
   data: {
     claim_id: string;
-    detail: { inspection_id: string; assignment_id?: string; package_sha256: string };
+    detail: {
+      inspection_id: string;
+      assignment_id?: string;
+      package_sha256: string;
+      estimating_payload: {
+        schema: 'claims-inspection-estimating/v1';
+        inspection_type: 'automotive'|'property';
+        service_requested: string;
+        asset: AssetIdentity;
+        evidence_refs: Array<{documentId:string;sha256:string;type:string;source:string}>;
+        findings: Array<Record<string,unknown>>;
+      };
+    };
     created_at?: string;
   };
   sent_at: string;
@@ -15,7 +28,7 @@ export type ClaimsInspectionEvent = {
 
 export type ClaimsInspectionInboxRow = {
   eventId:string; tenantId:string; claimId:string; inspectionId:string; assignmentId?:string;
-  packageSha256:string; idempotencyKey:string; status:'queued'|'processed'|'rejected';
+  packageSha256:string; idempotencyKey:string; status:'queued'|'processed'|'rejected'; estimateId?:string;
 };
 
 const SHA=/^[a-f0-9]{64}$/i;
@@ -35,12 +48,17 @@ export function parseClaimsInspectionEvent(raw:string):ClaimsInspectionEvent {
   const d=b.data, detail=d?.detail;
   if(!d || !text(d.claim_id) || !detail || !text(detail.inspection_id)) throw new Error('claims_inspection_fields_required');
   if(!SHA.test(text(detail.package_sha256,64))) throw new Error('invalid_package_sha256');
+  const payload=detail.estimating_payload;
+  if(!payload||payload.schema!=='claims-inspection-estimating/v1'||!payload.asset||!text(payload.asset.assetClass,60)) throw new Error('claims_estimating_payload_required');
+  if(!Array.isArray(payload.evidence_refs)||payload.evidence_refs.some(ref=>!text(ref?.documentId)||!SHA.test(text(ref?.sha256,64)))) throw new Error('invalid_claims_evidence_refs');
+  if(!Array.isArray(payload.findings)) throw new Error('invalid_claims_findings');
   if(!Number.isFinite(Date.parse(String(b.sent_at)))) throw new Error('invalid_sent_at');
   return b as ClaimsInspectionEvent;
 }
 
 export interface ClaimsInspectionInbox {
   accept(event:ClaimsInspectionEvent,idempotencyKey:string):Promise<{replayed:boolean;row:ClaimsInspectionInboxRow}>;
+  markProcessed(tenantId:string,idempotencyKey:string,estimateId:string):Promise<ClaimsInspectionInboxRow>;
 }
 export class MemoryClaimsInspectionInbox implements ClaimsInspectionInbox {
   private rows=new Map<string,ClaimsInspectionInboxRow>();
@@ -49,6 +67,10 @@ export class MemoryClaimsInspectionInbox implements ClaimsInspectionInbox {
     if(old) return {replayed:true,row:structuredClone(old)};
     const row:ClaimsInspectionInboxRow={eventId:event.id,tenantId:event.tenant_id,claimId:event.data.claim_id,inspectionId:event.data.detail.inspection_id,...(event.data.detail.assignment_id?{assignmentId:event.data.detail.assignment_id}:{}),packageSha256:event.data.detail.package_sha256,idempotencyKey,status:'queued'};
     this.rows.set(key,row); return {replayed:false,row:structuredClone(row)};
+  }
+  async markProcessed(tenantId:string,idempotencyKey:string,estimateId:string){
+    const key=tenantId+':'+idempotencyKey,row=this.rows.get(key); if(!row) throw new Error('claims_inbox_not_found');
+    const updated:ClaimsInspectionInboxRow={...row,status:'processed',estimateId}; this.rows.set(key,updated); return structuredClone(updated);
   }
 }
 export class PostgresClaimsInspectionInbox implements ClaimsInspectionInbox {
@@ -60,7 +82,13 @@ export class PostgresClaimsInspectionInbox implements ClaimsInspectionInbox {
     const raw=insert.rows[0]??(await this.pool.query('SELECT * FROM claims_inspection_inbox WHERE tenant_id=$1 AND idempotency_key=$2',[event.tenant_id,idempotencyKey])).rows[0];
     if(!raw) throw new Error('claims_inbox_persistence_failed');
     if(raw.event_id!==event.id || raw.package_sha256!==event.data.detail.package_sha256) throw new Error('claims_inbox_replay_conflict');
-    const row:ClaimsInspectionInboxRow={eventId:raw.event_id,tenantId:raw.tenant_id,claimId:raw.claim_id,inspectionId:raw.inspection_id,...(raw.assignment_id?{assignmentId:raw.assignment_id}:{}),packageSha256:raw.package_sha256,idempotencyKey:raw.idempotency_key,status:raw.status};
+    const row:ClaimsInspectionInboxRow={eventId:raw.event_id,tenantId:raw.tenant_id,claimId:raw.claim_id,inspectionId:raw.inspection_id,...(raw.assignment_id?{assignmentId:raw.assignment_id}:{}),packageSha256:raw.package_sha256,idempotencyKey:raw.idempotency_key,status:raw.status,...(raw.estimate_id?{estimateId:String(raw.estimate_id)}:{})};
     return {replayed:insert.rowCount===0,row};
+  }
+  async markProcessed(tenantId:string,idempotencyKey:string,estimateId:string){
+    const result=await this.pool.query(`UPDATE claims_inspection_inbox SET status='processed',processed_at=NOW(),estimate_id=$3 WHERE tenant_id=$1 AND idempotency_key=$2 AND status IN ('queued','processed') RETURNING *`,[tenantId,idempotencyKey,estimateId]);
+    const raw=result.rows[0]; if(!raw) throw new Error('claims_inbox_not_found');
+    if(raw.estimate_id!==estimateId) throw new Error('claims_inbox_estimate_conflict');
+    return {eventId:raw.event_id,tenantId:raw.tenant_id,claimId:raw.claim_id,inspectionId:raw.inspection_id,...(raw.assignment_id?{assignmentId:raw.assignment_id}:{}),packageSha256:raw.package_sha256,idempotencyKey:raw.idempotency_key,status:raw.status,estimateId:String(raw.estimate_id)};
   }
 }
