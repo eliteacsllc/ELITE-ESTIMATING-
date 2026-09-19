@@ -15,7 +15,7 @@ export type ClaimsInspectionEvent = {
 
 export type ClaimsInspectionInboxRow = {
   eventId:string; tenantId:string; claimId:string; inspectionId:string; assignmentId?:string;
-  packageSha256:string; idempotencyKey:string; status:'queued'|'processed'|'rejected';
+  packageSha256:string; idempotencyKey:string; status:'queued'|'processed'|'rejected'; estimateId?:string;
 };
 
 const SHA=/^[a-f0-9]{64}$/i;
