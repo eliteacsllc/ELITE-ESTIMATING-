@@ -1,119 +1,188 @@
 import './elite-brand.css';
 
-const apiBase = (import.meta.env.VITE_ESTIMATING_API_ORIGIN || '').replace(/\/$/, '');
+type Mode = 'guided' | 'professional' | 'field' | 'ai-assisted';
 
-function apiUrl(path: string): string {
-  return apiBase ? `${apiBase}${path}` : path;
-}
+const apiBase = (import.meta.env.VITE_ESTIMATING_API_ORIGIN || '').replace(/\/$/, '');
+const apiUrl = (path: string) => apiBase ? `${apiBase}${path}` : path;
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('Missing #app root');
 
-app.innerHTML = `
-  <section class="elite-shell">
-    <header class="hero">
-      <p class="eyebrow">Elite Estimating</p>
-      <h1>Build a complete estimate</h1>
-      <p class="lede">Add the vehicle and evidence you have. Elite handles the technical checks, source orchestration, and workflow behind the scenes.</p>
-    </header>
+let mode: Mode = 'professional';
+let selectedZone = 'Front bumper';
 
-    <section class="progress" aria-label="Estimate setup progress">
-      <span class="progress-step is-active">1. Vehicle</span>
-      <span class="progress-step">2. Evidence</span>
-      <span class="progress-step">3. Review</span>
-    </section>
+const checks = [
+  ['Damage documented', 100, 'pass'],
+  ['Parts identified', 96, 'pass'],
+  ['OEM procedures reviewed', 87, 'warning'],
+  ['ADAS reviewed', 100, 'pass'],
+  ['Labor operations verified', 88, 'warning'],
+  ['Photos matched', 94, 'pass'],
+  ['Pricing verified', 90, 'pass'],
+  ['QA checks passed', 97, 'pass'],
+] as const;
 
-    <div class="elite-grid setup-grid">
-      <label class="elite-card field-card" for="vin">
-        <span class="step-label">Vehicle</span>
-        <strong>VIN</strong>
-        <span class="help">Enter the 17-character VIN. We’ll use it to prepare the correct vehicle context.</span>
-        <input id="vin" inputmode="text" autocomplete="off" placeholder="Enter VIN" maxlength="17" aria-describedby="vin-help" />
-        <small id="vin-help" class="field-status">17 characters required</small>
-      </label>
+const estimateLines = [
+  ['Replace', 'Front bumper cover', 'Body', '2.4', '$612.45', 'Photo 12'],
+  ['R&I', 'Upper grille', 'Body', '0.6', '$0.00', 'Photo 12'],
+  ['Replace', 'Energy absorber', 'Body', '0.4', '$94.10', 'Photo 13'],
+  ['R&I', 'Front radar sensor', 'Mechanical', '0.5', '$0.00', 'Photo 14'],
+  ['Calibrate', 'Front radar', 'Mechanical', '1.5', '$375.00', 'OEM / ADAS'],
+  ['Refinish', 'Front bumper cover', 'Paint', '2.8', '$0.00', 'Photo 12'],
+];
 
-      <label class="elite-card field-card" for="photos">
-        <span class="step-label">Evidence</span>
-        <strong>Damage photos</strong>
-        <span class="help">Add the clearest photos you have. More can be added later.</span>
-        <input id="photos" type="file" accept="image/*" capture="environment" multiple />
-        <span id="photo-count" class="field-status" aria-live="polite">No photos selected</span>
-      </label>
+function render() {
+  const score = Math.round(checks.reduce((s, [,v]) => s + v, 0) / checks.length);
+  app.innerHTML = `
+  <div class="app-shell mode-${mode}">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">E</span><div><strong>ELITE</strong><span>ESTIMATING</span></div></div>
+      <nav>
+        <button class="nav-item active">◈ <span>Work</span></button>
+        <button class="nav-item">▣ <span>Estimates</span><b>8</b></button>
+        <button class="nav-item">⇄ <span>Supplements</span><b>3</b></button>
+        <button class="nav-item">⌁ <span>ACV / DV</span></button>
+        <button class="nav-item">⌘ <span>Repair Intelligence</span></button>
+        <button class="nav-item">▤ <span>Reports</span></button>
+        <button class="nav-item">⚙ <span>Admin</span></button>
+      </nav>
+      <div class="system-card"><span class="status-dot"></span><div><strong>Elite services</strong><small id="service-status">Ready</small></div><button id="health">Check</button></div>
+    </aside>
 
-      <label class="elite-card field-card" for="documents">
-        <span class="step-label">Documents</span>
-        <strong>Claim or registration</strong>
-        <span class="help">Optional for now. Add PDFs or images if they’re available.</span>
-        <input id="documents" type="file" accept="image/*,application/pdf" multiple />
-        <span id="document-count" class="field-status" aria-live="polite">No documents selected</span>
-      </label>
-    </div>
+    <main class="workspace">
+      <header class="topbar">
+        <div class="command"><span>⌕</span><input id="command" placeholder="Search or type a command: VIN, add bumper, run ACV, compare estimate..." /></div>
+        <div class="top-actions">
+          <select id="mode" aria-label="Workspace mode">
+            <option value="guided" ${mode==='guided'?'selected':''}>Guided</option>
+            <option value="professional" ${mode==='professional'?'selected':''}>Professional</option>
+            <option value="field" ${mode==='field'?'selected':''}>Field</option>
+            <option value="ai-assisted" ${mode==='ai-assisted'?'selected':''}>AI-assisted</option>
+          </select>
+          <button class="primary">+ New estimate</button>
+        </div>
+      </header>
 
-    <section class="action-zone" aria-label="Next action">
-      <div>
-        <strong>Ready when you are</strong>
-        <p id="readiness-copy">Enter a VIN to continue. Evidence can be added now or later.</p>
-      </div>
-      <button id="continue" class="elite-action elite-action--primary" type="button" disabled>Continue estimate</button>
-    </section>
+      <section class="attention-strip">
+        <div><strong>Needs attention</strong><span>4 estimates</span></div>
+        <div><strong>Supplements</strong><span>3 waiting</span></div>
+        <div><strong>QA exceptions</strong><span>2</span></div>
+        <div><strong>Parts conflicts</strong><span>5</span></div>
+        <div><strong>Total-loss review</strong><span>2</span></div>
+      </section>
 
-    <details class="support-details">
-      <summary>Having trouble?</summary>
-      <div class="support-content">
-        <p id="service-status">Elite services are checked automatically when needed.</p>
-        <button id="health" class="elite-action elite-action--secondary" type="button">Check service status</button>
-      </div>
-    </details>
-  </section>
-`;
+      <section class="loss-header">
+        <div>
+          <span class="eyebrow">CM-28442 • Auto collision</span>
+          <h1>2022 Honda Accord EX</h1>
+          <p>VIN 1HGCV1F34NA123456 • 32,450 mi • Front impact • Carrier assignment</p>
+        </div>
+        <div class="loss-actions">
+          <button>Compare revision</button>
+          <button>Generate report</button>
+          <button class="primary">Finalize</button>
+        </div>
+      </section>
 
-function bindFileCount(id: string, outputId: string, noun: string) {
-  const input = document.querySelector<HTMLInputElement>(`#${id}`);
-  const output = document.querySelector<HTMLElement>(`#${outputId}`);
-  input?.addEventListener('change', () => {
-    const count = input.files?.length || 0;
-    if (output) output.textContent = count ? `${count} ${noun}${count === 1 ? '' : 's'} selected` : `No ${noun}s selected`;
+      <section class="workspace-grid">
+        <aside class="context-pane panel">
+          <div class="panel-title"><span>Loss context</span><button>•••</button></div>
+          <div class="vehicle-card">
+            <div class="vehicle-visual">FRONT IMPACT</div>
+            <strong>2022 Honda Accord EX</strong><span>FWD • 1.5L Turbo • Automatic</span>
+          </div>
+          <div class="zone-grid">
+            ${['Front bumper','LF fender','Hood','RF lamp','Radar','Cooling'].map(z=>`<button class="zone ${z===selectedZone?'selected':''}" data-zone="${z}">${z}</button>`).join('')}
+          </div>
+          <div class="section-head"><strong>Evidence</strong><span>18 items</span></div>
+          <div class="thumb-grid">
+            ${[12,13,14,15,16,17].map(n=>`<button class="thumb">Photo ${n}<small>${n===14?'Radar':'Front'}</small></button>`).join('')}
+          </div>
+          <button class="dropzone">＋ Add camera, gallery, video or document</button>
+        </aside>
+
+        <section class="estimate-pane panel">
+          <div class="panel-title"><span>Repair plan • ${selectedZone}</span><div><button>Undo</button><button>History</button></div></div>
+          <div class="estimate-toolbar"><button class="primary">+ Line</button><button>AI suggest</button><button>Voice</button><button>Parts compare</button><button>Import estimate</button></div>
+          <div class="estimate-table">
+            <div class="estimate-row header"><span>Operation</span><span>Component</span><span>Type</span><span>Labor</span><span>Price</span><span>Evidence</span></div>
+            ${estimateLines.map(line=>`<div class="estimate-row">${line.map((cell,i)=>`<span class="${i===0?'op':''}">${cell}</span>`).join('')}</div>`).join('')}
+          </div>
+          <div class="totals">
+            <span>Parts <b>$706.55</b></span><span>Labor <b>$1,428.00</b></span><span>Paint/Materials <b>$612.50</b></span><strong>Current $2,747.05</strong>
+          </div>
+          <div class="revision-bar">
+            <span><b>Revision delta</b> +6 added • 1 changed • $428.60 increase</span>
+            <button>View full diff</button>
+          </div>
+        </section>
+
+        <aside class="intel-pane panel">
+          <div class="panel-title"><span>Repair intelligence</span><span class="live">LIVE</span></div>
+          <div class="completeness">
+            <div class="score"><strong>${score}%</strong><span>Repair plan completeness</span></div>
+            <div class="meter"><i style="width:${score}%"></i></div>
+            ${checks.map(([label,value,state])=>`<div class="check ${state}"><span>${label}</span><b>${value}%</b></div>`).join('')}
+          </div>
+
+          <div class="intel-card critical">
+            <div class="intel-kicker">ADAS IMPACT</div>
+            <strong>Front radar removed</strong>
+            <p>Calibration review required before release.</p>
+            <div class="source">Source: OEM procedure • confidence 99%</div>
+            <div class="button-row"><button>Why?</button><button>View source</button><button class="primary">Add operation</button></div>
+          </div>
+
+          <div class="intel-card">
+            <div class="intel-kicker">COPILOT</div>
+            <strong>4 related operations found</strong>
+            <p>Pre-scan, post-scan, corrosion protection and road test may apply to this repair graph.</p>
+            <div class="button-row"><button>Review 4</button><button>Dismiss</button></div>
+          </div>
+
+          <div class="intel-card total-loss">
+            <div class="intel-kicker">ACV SIGNAL</div>
+            <strong>Projected repair ratio 79.8%</strong>
+            <p>Repair $14,822 + predicted supplement $2,100 against estimated ACV $21,200.</p>
+            <button class="primary full">Run full ACV</button>
+          </div>
+        </aside>
+      </section>
+    </main>
+  </div>`;
+
+  document.querySelector<HTMLSelectElement>('#mode')?.addEventListener('change', (event) => {
+    mode = (event.target as HTMLSelectElement).value as Mode;
+    render();
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-zone]').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectedZone = button.dataset.zone || selectedZone;
+      render();
+    });
+  });
+
+  document.querySelector<HTMLButtonElement>('#health')?.addEventListener('click', async () => {
+    const status = document.querySelector<HTMLElement>('#service-status');
+    if (status) status.textContent = 'Checking…';
+    try {
+      const response = await fetch(apiUrl('/health'), { credentials: 'include' });
+      if (status) status.textContent = response.ok ? 'All systems operational' : 'Service degraded';
+    } catch {
+      if (status) status.textContent = 'Offline-safe mode';
+    }
+  });
+
+  document.querySelector<HTMLInputElement>('#command')?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    const input = event.currentTarget;
+    const command = input.value.trim().toLowerCase();
+    if (command.includes('acv')) alert('ACV workflow queued for this loss. Human review remains required.');
+    else if (command.includes('compare')) alert('Opening normalized estimate/supplement comparison.');
+    else if (command) alert(`Command received: ${input.value}`);
+    input.value = '';
   });
 }
 
-bindFileCount('photos', 'photo-count', 'photo');
-bindFileCount('documents', 'document-count', 'document');
-
-const vin = document.querySelector<HTMLInputElement>('#vin');
-const continueButton = document.querySelector<HTMLButtonElement>('#continue');
-const readinessCopy = document.querySelector<HTMLElement>('#readiness-copy');
-const vinHelp = document.querySelector<HTMLElement>('#vin-help');
-
-function updateReadiness() {
-  const value = (vin?.value || '').trim().toUpperCase();
-  if (vin && vin.value !== value) vin.value = value;
-  const valid = /^[A-HJ-NPR-Z0-9]{17}$/.test(value);
-  if (continueButton) continueButton.disabled = !valid;
-  if (vinHelp) vinHelp.textContent = valid ? 'Vehicle ready' : `${Math.min(value.length, 17)} of 17 characters`;
-  if (readinessCopy) readinessCopy.textContent = valid
-    ? 'Vehicle ready. Continue to review the evidence and estimate setup.'
-    : 'Enter a VIN to continue. Evidence can be added now or later.';
-}
-
-vin?.addEventListener('input', updateReadiness);
-updateReadiness();
-
-continueButton?.addEventListener('click', () => {
-  document.querySelector('.progress-step:nth-child(1)')?.classList.remove('is-active');
-  document.querySelector('.progress-step:nth-child(2)')?.classList.add('is-active');
-  document.querySelector<HTMLInputElement>('#photos')?.focus();
-  if (readinessCopy) readinessCopy.textContent = 'Vehicle complete. Add available evidence, then continue into review.';
-});
-
-document.querySelector<HTMLButtonElement>('#health')?.addEventListener('click', async () => {
-  const status = document.querySelector<HTMLElement>('#service-status');
-  if (status) status.textContent = 'Checking service availability…';
-  try {
-    const response = await fetch(apiUrl('/health'), { credentials: 'include' });
-    if (status) status.textContent = response.ok
-      ? 'Elite services are available.'
-      : 'A service is temporarily unavailable. Your work is safe; try again shortly.';
-  } catch {
-    if (status) status.textContent = 'We could not reach the service. Your work is safe; try again when you are connected.';
-  }
-});
+render();
