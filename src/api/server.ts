@@ -295,7 +295,28 @@ const server = createServer(async (req, res) => {
       if(headerEvent && headerEvent!==event.event_type) return send(res,409,{error:'event_header_mismatch'});
       // Retry delivery IDs may change; the signed claim event ID is the stable replay key.
       const accepted=await claimsInspectionInbox.accept(event,event.id);
-      return send(res,accepted.replayed?200:202,{accepted:true,replayed:accepted.replayed,status:accepted.row.status,claimId:accepted.row.claimId,inspectionId:accepted.row.inspectionId});
+      if(accepted.row.status==='processed'&&accepted.row.estimateId){
+        return send(res,200,{accepted:true,replayed:true,status:'processed',claimId:accepted.row.claimId,inspectionId:accepted.row.inspectionId,estimateId:accepted.row.estimateId});
+      }
+      const payload=event.data.detail.estimating_payload;
+      const systemActor:Principal={userId:'claims-management',tenantId:event.tenant_id,roles:['estimator']};
+      const result=await idempotentCreateService.create(systemActor,event.id,{
+        claimId:event.data.claim_id,
+        asset:payload.asset,
+        locale:'en-US',
+        currency:'USD',
+        jurisdiction:payload.asset.jurisdiction?.trim()||'US',
+      });
+      const processed=await claimsInspectionInbox.markProcessed(event.tenant_id,event.id,result.estimate.id);
+      return send(res,result.replayed||accepted.replayed?200:201,{
+        accepted:true,
+        replayed:result.replayed||accepted.replayed,
+        status:processed.status,
+        claimId:processed.claimId,
+        inspectionId:processed.inspectionId,
+        estimateId:processed.estimateId,
+        evidenceRefCount:payload.evidence_refs.length,
+      });
     }
 
     if (req.method === 'GET' && req.url === '/ready') {
