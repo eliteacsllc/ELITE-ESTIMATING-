@@ -191,9 +191,34 @@ export class EstimatingService {
       repairPlanFindingCount, domainWorkflowWarningCount,
       ...(estimaticsEvidence ? { estimaticsEnvelopeDigest: estimaticsEvidence.envelopeDigest } : {}),
     });
+    const qaProcedures = [
+      ...saved.lines.filter(line => line.operation === 'calibrate').map(line => ({ type: 'calibration', lineId: line.id })),
+      ...saved.lines.filter(line => line.operation === 'measure').map(line => ({ type: 'measurement', lineId: line.id })),
+    ];
+    const qaSnapshot = {
+      asset: saved.asset,
+      lines: saved.lines.map(line => ({
+        id: line.id,
+        operation: line.operation,
+        description: line.component,
+        quantity: line.quantity,
+        laborHours: line.laborHours ?? 0,
+        laborRate: line.laborRate ? line.laborRate.amountMinor / 100 : 0,
+        unitPrice: line.partOrMaterial ? line.partOrMaterial.amountMinor / 100 : 0,
+        total: line.total.amountMinor / 100,
+        safetyCritical: line.safetyCritical === true,
+        procedureRefs: [...(line.procedureRefs ?? [])],
+      })),
+      procedures: qaProcedures,
+      requiresCalibration: saved.lines.some(line => line.operation === 'calibrate'),
+      structuralRepair: saved.lines.some(line => line.safetyCritical === true && /rail|pillar|frame|structure|apron|rocker|floor/i.test(line.component)),
+      refinishOperation: saved.lines.some(line => ['refinish','blend'].includes(line.operation)),
+      electronicsAffected: saved.lines.some(line => ['scan','calibrate'].includes(line.operation)),
+    };
     await this.emit('estimate.approved', saved, {
       totalMinor: saved.total.amountMinor,
       currency: saved.currency,
+      qaSnapshot,
       ...(estimaticsEvidence ? { estimaticsEvidence: {
         schemaVersion: estimaticsEvidence.schemaVersion,
         requestId: estimaticsEvidence.requestId,
