@@ -15,7 +15,7 @@ export type ClaimsInspectionEvent = {
 
 export type ClaimsInspectionInboxRow = {
   eventId:string; tenantId:string; claimId:string; inspectionId:string; assignmentId?:string;
-  packageSha256:string; idempotencyKey:string; status:'queued'|'processed'|'rejected';
+  packageSha256:string; idempotencyKey:string; status:'queued'|'processed'|'rejected'; estimateId?:string;
 };
 
 const SHA=/^[a-f0-9]{64}$/i;
@@ -41,15 +41,19 @@ export function parseClaimsInspectionEvent(raw:string):ClaimsInspectionEvent {
 
 export interface ClaimsInspectionInbox {
   accept(event:ClaimsInspectionEvent,idempotencyKey:string):Promise<{replayed:boolean;row:ClaimsInspectionInboxRow}>;
+  list(tenantId:string,status?:'queued'|'processed'|'rejected',limit?:number):Promise<ClaimsInspectionInboxRow[]>;
+  linkEstimate(tenantId:string,eventId:string,estimateId:string):Promise<ClaimsInspectionInboxRow>;
 }
 export class MemoryClaimsInspectionInbox implements ClaimsInspectionInbox {
   private rows=new Map<string,ClaimsInspectionInboxRow>();
   async accept(event:ClaimsInspectionEvent,idempotencyKey:string){
     const key=event.tenant_id+':'+idempotencyKey, old=this.rows.get(key);
-    if(old) return {replayed:true,row:structuredClone(old)};
+    if(old){if(old.eventId!==event.id||old.packageSha256!==event.data.detail.package_sha256)throw new Error('claims_inbox_replay_conflict');return {replayed:true,row:structuredClone(old)};}
     const row:ClaimsInspectionInboxRow={eventId:event.id,tenantId:event.tenant_id,claimId:event.data.claim_id,inspectionId:event.data.detail.inspection_id,...(event.data.detail.assignment_id?{assignmentId:event.data.detail.assignment_id}:{}),packageSha256:event.data.detail.package_sha256,idempotencyKey,status:'queued'};
     this.rows.set(key,row); return {replayed:false,row:structuredClone(row)};
   }
+  async list(tenantId:string,status:'queued'|'processed'|'rejected'='queued',limit=50){return [...this.rows.values()].filter(r=>r.tenantId===tenantId&&r.status===status).slice(0,Math.max(1,Math.min(200,Math.trunc(limit)||50))).map(r=>structuredClone(r));}
+  async linkEstimate(tenantId:string,eventId:string,estimateId:string){for(const [key,row] of this.rows){if(row.tenantId===tenantId&&row.eventId===eventId){const next={...row,status:'processed' as const,estimateId} as ClaimsInspectionInboxRow & {estimateId:string};this.rows.set(key,next);return structuredClone(next)}}throw new Error('claims_inbox_event_not_found');}
 }
 export class PostgresClaimsInspectionInbox implements ClaimsInspectionInbox {
   private pool:Pool;
@@ -62,5 +66,15 @@ export class PostgresClaimsInspectionInbox implements ClaimsInspectionInbox {
     if(raw.event_id!==event.id || raw.package_sha256!==event.data.detail.package_sha256) throw new Error('claims_inbox_replay_conflict');
     const row:ClaimsInspectionInboxRow={eventId:raw.event_id,tenantId:raw.tenant_id,claimId:raw.claim_id,inspectionId:raw.inspection_id,...(raw.assignment_id?{assignmentId:raw.assignment_id}:{}),packageSha256:raw.package_sha256,idempotencyKey:raw.idempotency_key,status:raw.status};
     return {replayed:insert.rowCount===0,row};
+  }
+  async list(tenantId:string,status:'queued'|'processed'|'rejected'='queued',limit=50){
+    const safe=Math.max(1,Math.min(200,Math.trunc(limit)||50));
+    const result=await this.pool.query('SELECT * FROM claims_inspection_inbox WHERE tenant_id=$1 AND status=$2 ORDER BY received_at ASC LIMIT $3',[tenantId,status,safe]);
+    return result.rows.map(raw=>({eventId:raw.event_id,tenantId:raw.tenant_id,claimId:raw.claim_id,inspectionId:raw.inspection_id,...(raw.assignment_id?{assignmentId:raw.assignment_id}:{}),packageSha256:raw.package_sha256,idempotencyKey:raw.idempotency_key,status:raw.status,...(raw.estimate_id?{estimateId:raw.estimate_id}:{})}));
+  }
+  async linkEstimate(tenantId:string,eventId:string,estimateId:string){
+    const result=await this.pool.query("UPDATE claims_inspection_inbox SET status='processed',estimate_id=$3,processed_at=NOW() WHERE tenant_id=$1 AND event_id=$2 AND status='queued' RETURNING *",[tenantId,eventId,estimateId]);
+    const raw=result.rows[0];if(!raw)throw new Error('claims_inbox_event_not_found_or_not_queued');
+    return {eventId:raw.event_id,tenantId:raw.tenant_id,claimId:raw.claim_id,inspectionId:raw.inspection_id,...(raw.assignment_id?{assignmentId:raw.assignment_id}:{}),packageSha256:raw.package_sha256,idempotencyKey:raw.idempotency_key,status:raw.status,estimateId:raw.estimate_id};
   }
 }

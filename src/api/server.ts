@@ -14,7 +14,7 @@ import { MemoryLifecycleSink, PostgresLifecycleOutbox, type LifecycleSink } from
 import { verifyHs256Token } from '../security/token.js';
 import { OidcPrincipalVerifier, oidcConfigFromEnv } from '../security/oidc.js';
 import { InMemoryTokenBucketRateLimiter, PostgresTokenBucketRateLimiter, principalRateLimitKey, rateLimitPolicyFromEnv, type RateLimiter } from '../security/rate-limit.js';
-import type { Principal } from '../security/rbac.js';
+import { authorize, type Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
 import type { AddSupplementChangeInput } from '../application/supplement-service.js';
 import { EliteJsonInterchangeAdapter, type EliteEstimateEnvelope } from '../interchange/elite-json.js';
@@ -324,6 +324,26 @@ const server = createServer(async (req, res) => {
     }
     const url = requestUrl(req.url);
     const parts = pathParts(req.url);
+
+    if (parts[0]==='v1'&&parts[1]==='integrations'&&parts[2]==='claims'&&parts[3]==='inspection-inbox') {
+      authorize(actor,'estimate:read',actor.tenantId);
+      if(parts.length===4&&req.method==='GET'){
+        const status=(url.searchParams.get('status')||'queued') as 'queued'|'processed'|'rejected';
+        if(!['queued','processed','rejected'].includes(status)) throw new Error('invalid_claims_inbox_status');
+        const requested=Number(url.searchParams.get('limit')??50);
+        return send(res,200,{items:await claimsInspectionInbox.list(actor.tenantId,status,Number.isFinite(requested)?requested:50)});
+      }
+      if(parts.length===6&&parts[5]==='link-estimate'&&req.method==='POST'){
+        authorize(actor,'estimate:update',actor.tenantId);
+        const eventId=parts[4]; const body=await json(req); const estimateId=String(body.estimateId??'').trim();
+        if(!estimateId) throw new Error('estimate_id_required');
+        const estimate=await service.get(actor,estimateId);
+        const queued=(await claimsInspectionInbox.list(actor.tenantId,'queued',200)).find(row=>row.eventId===eventId);
+        if(!queued) throw new Error('claims_inbox_event_not_found_or_not_queued');
+        if(estimate.claimId!==queued.claimId) throw new Error('claims_inbox_claim_estimate_mismatch');
+        return send(res,200,await claimsInspectionInbox.linkEstimate(actor.tenantId,eventId,estimateId));
+      }
+    }
 
     if (await handleDecisionHttp({ req, res, actor, parts, url, service: decisionService, send, json })) return;
     if (await handleEstimateWorkflowHttp({ req, res, actor, parts, service, send, json })) return;
