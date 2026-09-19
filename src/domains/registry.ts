@@ -1,11 +1,13 @@
 import type { AssetClass, AssetIdentity, EstimateOperation } from '../domain/types.js';
 import type { ProviderCapability } from '../connectors/contracts.js';
+import { profileForAssetClass, type AssetProfileSection } from './asset-profiles.js';
 
 export type EstimatingDomainId =
   | 'collision'
   | 'property'
   | 'commercial_truck'
   | 'heavy_equipment'
+  | 'machinery'
   | 'powersports'
   | 'rv'
   | 'marine'
@@ -24,6 +26,8 @@ export type DomainEstimatePlan = {
   allowedOperations: EstimateOperation[];
   providerCapabilities: ProviderCapability[];
   checklist: DomainChecklistItem[];
+  profileSections: AssetProfileSection[];
+  riskFlags: string[];
 };
 
 export interface EstimatingDomainAdapter {
@@ -35,6 +39,7 @@ export interface EstimatingDomainAdapter {
 const vehicleOps: EstimateOperation[] = ['repair','replace','remove_install','remove_replace','refinish','blend','inspect','scan','calibrate','measure','clean','other'];
 const propertyOps: EstimateOperation[] = ['repair','replace','inspect','measure','clean','demolish','install','detach_reset','other'];
 const contentsOps: EstimateOperation[] = ['repair','replace','inspect','clean','other'];
+const machineryOps: EstimateOperation[] = ['repair','replace','remove_install','remove_replace','inspect','scan','calibrate','measure','clean','install','detach_reset','other'];
 
 function checklist(...items: Array<[string, string]>): DomainChecklistItem[] {
   return items.map(([id, reason]) => ({ id, required: true, reason }));
@@ -53,12 +58,19 @@ class StaticDomainAdapter implements EstimatingDomainAdapter {
 
   plan(asset: AssetIdentity): DomainEstimatePlan {
     if (!this.supports(asset)) throw new Error(`domain_not_applicable:${this.id}:${asset.assetClass}`);
+    const profile = profileForAssetClass(asset.assetClass);
     return {
       domain: this.id,
       assetClass: asset.assetClass,
       allowedOperations: [...this.allowedOperations],
       providerCapabilities: [...this.providerCapabilities],
       checklist: this.domainChecklist.map(item => ({ ...item })),
+      profileSections: profile?.sections.map(section => ({
+        ...section,
+        requiredFields: [...section.requiredFields],
+        optionalFields: [...section.optionalFields],
+      })) ?? [],
+      riskFlags: profile ? [...profile.riskFlags] : [],
     };
   }
 }
@@ -70,18 +82,21 @@ export const DOMAIN_ADAPTERS: ReadonlyArray<EstimatingDomainAdapter> = [
   new StaticDomainAdapter('commercial_truck', ['commercial_vehicle','tractor_trailer','ambulance_emergency'], vehicleOps,
     ['asset_identity','build_configuration','parts','labor_times','labor_rates','materials','oem_procedures','diagnostics','market_pricing','valuation','safety_recalls'],
     checklist(['configuration','capture chassis/body/upfit configuration'],['heavy_parts','validate heavy-duty part and assembly source'],['procedures','resolve OEM/body-builder procedures'],['sublet','identify towing/alignment/frame/sublet work'],['qc','define functional and road-test validation'])),
-  new StaticDomainAdapter('heavy_equipment', ['heavy_equipment','crane_specialty'], vehicleOps,
+  new StaticDomainAdapter('heavy_equipment', ['heavy_equipment','agricultural_equipment','material_handling_equipment','crane_specialty'], vehicleOps,
     ['asset_identity','parts','labor_times','labor_rates','materials','oem_procedures','diagnostics','market_pricing','valuation'],
-    checklist(['serial','validate serial/model/configuration'],['attachments','inventory attachments and implements'],['field','capture field-access/mobilization requirements'],['safety','resolve lifting/hydraulic/electrical safety requirements'],['valuation','validate repair-vs-replace economics'])),
+    checklist(['serial','validate serial/model/configuration'],['hours','capture operating hours, meter basis, and duty cycle'],['attachments','inventory attachments and implements'],['field','capture field-access/mobilization requirements'],['safety','resolve lifting/hydraulic/electrical/stored-energy requirements'],['valuation','validate repair-vs-replace economics'])),
+  new StaticDomainAdapter('machinery', ['industrial_machinery'], machineryOps,
+    ['asset_identity','parts','labor_times','labor_rates','materials','oem_procedures','diagnostics','market_pricing','valuation','codes_regulations'],
+    checklist(['nameplate','capture manufacturer/model/serial/nameplate data'],['operating','capture hours/cycles/capacity and operating duty'],['installation','document foundation/utilities/anchoring and access'],['safety','resolve guarding/LOTO/stored-energy requirements'],['precision','capture calibration/alignment/commissioning requirements'],['rigging','identify freight/rigging/removal/reinstallation'],['valuation','validate repair-vs-replace, obsolescence, and market evidence'])),
   new StaticDomainAdapter('powersports', ['motorcycle','atv_utv'], vehicleOps,
     ['asset_identity','build_configuration','parts','labor_times','materials','oem_procedures','diagnostics','market_pricing','valuation','safety_recalls'],
     checklist(['identity','validate VIN/model/trim'],['safety','inspect frame/forks/wheels/brakes/controls'],['procedures','resolve OEM procedures'],['parts','validate configured parts'],['qc','define functional road/operation check'])),
   new StaticDomainAdapter('rv', ['rv'], [...vehicleOps,'install','detach_reset'],
     ['asset_identity','build_configuration','parts','labor_times','labor_rates','materials','oem_procedures','diagnostics','property_pricing','market_pricing','valuation','safety_recalls'],
-    checklist(['chassis','separate chassis and coach/body systems'],['utilities','inspect electrical/LP/water/HVAC systems'],['structure','inspect roof/walls/floor and moisture intrusion'],['parts','validate manufacturer-specific components'],['qc','define system leak/function tests'])),
+    checklist(['chassis','separate chassis and coach/body systems'],['utilities','inspect 12V/120V/LP/water/HVAC systems'],['structure','inspect roof/walls/floor and moisture intrusion'],['systems','capture appliances/slide-outs/awnings/leveling systems'],['parts','validate manufacturer-specific components'],['qc','define system leak/function tests'])),
   new StaticDomainAdapter('marine', ['marine'], [...vehicleOps,'install','detach_reset'],
     ['asset_identity','parts','labor_times','labor_rates','materials','oem_procedures','diagnostics','market_pricing','valuation'],
-    checklist(['identity','validate HIN/serial/engine/drive configuration'],['structure','inspect hull/deck/stringer/transom structure'],['systems','inspect propulsion/electrical/fuel/steering systems'],['haul','identify haul-out/storage/sublet requirements'],['qc','define leak/function/water-test validation'])),
+    checklist(['identity','validate HIN/serial/engine/drive configuration'],['structure','inspect hull/deck/stringer/transom structure'],['systems','inspect propulsion/electrical/fuel/steering/navigation/plumbing systems'],['haul','identify haul-out/storage/trailer/sublet requirements'],['qc','define leak/function/water-test validation'])),
   new StaticDomainAdapter('property', ['residential_property','commercial_property'], propertyOps,
     ['materials','labor_rates','market_pricing','property_pricing','weather_catastrophe','codes_regulations'],
     checklist(['measure','capture rooms/openings/surfaces/roof geometry'],['cause','document cause and damage boundaries'],['code','identify jurisdictional code requirements'],['detach','identify detach/reset and access operations'],['waste','apply waste/yield only with documented basis'],['qc','define completion and moisture/function validation'])),
