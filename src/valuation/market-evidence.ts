@@ -1,3 +1,5 @@
+export const AUTOMOTIVE_MARKET_EVIDENCE_SCHEMA_VERSION = "elite.automotive-market-evidence.v1" as const;
+
 export type MarketEvidenceKind =
   | "dealer_quote"
   | "retail_comparable"
@@ -6,32 +8,46 @@ export type MarketEvidenceKind =
   | "salvage_bid"
   | "guide_value";
 
+export type MarketEvidenceLicenseClass =
+  | "owned"
+  | "licensed"
+  | "public"
+  | "customer_provided"
+  | "internal";
+
 export interface MarketEvidenceRecord {
+  schemaVersion: typeof AUTOMOTIVE_MARKET_EVIDENCE_SCHEMA_VERSION;
   id: string;
+  tenantId: string;
   kind: MarketEvidenceKind;
   provider: string;
   sourceId: string;
   observedAt: string;
+  retrievedAt?: string;
   amount: number;
   currency: string;
   region?: string;
   mileage?: number;
   condition?: string;
-  licensedOrAuthorized: boolean;
+  licenseClass: MarketEvidenceLicenseClass;
+  authorized: boolean;
   confidence: number;
+  evidenceRef?: string;
 }
 
 export function acceptMarketEvidence(record: MarketEvidenceRecord): boolean {
   const observedAtMs = Date.parse(record.observedAt);
   return Boolean(
+    record.schemaVersion === AUTOMOTIVE_MARKET_EVIDENCE_SCHEMA_VERSION &&
     record.id &&
+    record.tenantId &&
     record.provider &&
     record.sourceId &&
     Number.isFinite(observedAtMs) &&
     Number.isFinite(record.amount) &&
     record.amount >= 0 &&
-    record.currency &&
-    record.licensedOrAuthorized &&
+    /^[A-Z]{3}$/.test(record.currency) &&
+    record.authorized &&
     Number.isFinite(record.confidence) &&
     record.confidence >= 0 &&
     record.confidence <= 1 &&
@@ -44,7 +60,7 @@ export function normalizeMarketEvidence(records: MarketEvidenceRecord[]): Market
   return records
     .filter(acceptMarketEvidence)
     .filter((record) => {
-      const key = `${record.provider.trim().toLowerCase()}:${record.sourceId.trim()}`;
+      const key = `${record.tenantId}:${record.provider.trim().toLowerCase()}:${record.sourceId.trim()}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
