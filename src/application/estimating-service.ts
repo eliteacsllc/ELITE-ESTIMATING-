@@ -17,6 +17,7 @@ import type { AuditSink } from '../audit/audit.js';
 import { auditEvent, NoopAuditSink } from '../audit/audit.js';
 import type { LifecycleSink, LifecycleTopic } from '../integrations/outbox.js';
 import { lifecycleEvent, NoopLifecycleSink } from '../integrations/outbox.js';
+import type { EstimaticsEvidenceReceiptRepository, EstimaticsEvidenceReceipt } from '../connectors/estimatics-receipts.js';
 
 export type CreateEstimateInput = {
   id?: string;
@@ -45,6 +46,7 @@ export class EstimatingService {
     private readonly carrierRules: CarrierRule[] = [],
     private readonly audit: AuditSink = new NoopAuditSink(),
     private readonly lifecycle: LifecycleSink = new NoopLifecycleSink(),
+    private readonly estimaticsReceipts?: EstimaticsEvidenceReceiptRepository,
   ) {}
 
   private async record(principal: Principal, action: string, estimate: Estimate, metadata: Record<string, unknown> = {}): Promise<void> {
@@ -53,6 +55,19 @@ export class EstimatingService {
 
   private async emit(topic: LifecycleTopic, estimate: Estimate, payload: Record<string, unknown> = {}): Promise<void> {
     await this.lifecycle.emit(lifecycleEvent({ tenantId: estimate.tenantId, topic, aggregateType: 'estimate', aggregateId: estimate.id, payload: { estimateId: estimate.id, claimId: estimate.claimId ?? null, revision: estimate.revision, status: estimate.status, ...payload }, idempotencyKey: `${topic}:${estimate.tenantId}:${estimate.id}:r${estimate.revision}:${estimate.updatedAt}` }));
+  }
+
+  private async approvalEstimaticsEvidence(estimate: Estimate): Promise<EstimaticsEvidenceReceipt | null> {
+    const receipt = this.estimaticsReceipts
+      ? await this.estimaticsReceipts.latestByEstimate(estimate.tenantId, estimate.id)
+      : null;
+    const needsProcedureEvidence = estimate.lines.some(line =>
+      line.safetyCritical === true || (line.procedureRefs?.length ?? 0) > 0
+    );
+    if (needsProcedureEvidence && !receipt) throw new Error('estimatics_evidence_required');
+    if (receipt?.blockedRecordIds.length) throw new Error('estimatics_knowledge_blocked');
+    if (receipt?.requiresHumanReview) throw new Error('estimatics_human_review_required');
+    return receipt;
   }
 
   async create(principal: Principal, input: CreateEstimateInput): Promise<Estimate> {
@@ -169,9 +184,28 @@ export class EstimatingService {
     if (current.domainWorkflow) domainWorkflowWarningCount = assertDomainWorkflowComplete(current.domainWorkflow).warnings.length;
     const findings = evaluateCarrierRules(current, this.carrierRules);
     assertNoBlockingFindings(findings);
+    const estimaticsEvidence = await this.approvalEstimaticsEvidence(current);
     const saved = await this.repository.save({ ...recalculate(current), status: 'approved' }, current.updatedAt);
-    await this.record(principal, 'estimate.approved', saved, { carrierFindingCount: findings.length, motorGuideFindingCount: motorFindings.length, repairPlanFindingCount, domainWorkflowWarningCount });
-    await this.emit('estimate.approved', saved, { totalMinor: saved.total.amountMinor, currency: saved.currency });
+    await this.record(principal, 'estimate.approved', saved, {
+      carrierFindingCount: findings.length, motorGuideFindingCount: motorFindings.length,
+      repairPlanFindingCount, domainWorkflowWarningCount,
+      ...(estimaticsEvidence ? { estimaticsEnvelopeDigest: estimaticsEvidence.envelopeDigest } : {}),
+    });
+    await this.emit('estimate.approved', saved, {
+      totalMinor: saved.total.amountMinor,
+      currency: saved.currency,
+      ...(estimaticsEvidence ? { estimaticsEvidence: {
+        schemaVersion: estimaticsEvidence.schemaVersion,
+        requestId: estimaticsEvidence.requestId,
+        sourceReceiptDigest: estimaticsEvidence.sourceReceiptDigest,
+        envelopeDigest: estimaticsEvidence.envelopeDigest,
+        recordRefs: estimaticsEvidence.recordRefs,
+        correlationId: estimaticsEvidence.correlationId,
+        claimId: estimaticsEvidence.claimId ?? null,
+        assignmentId: estimaticsEvidence.assignmentId ?? null,
+        inspectionId: estimaticsEvidence.inspectionId ?? null,
+      } } : {}),
+    });
     return saved;
   }
 
