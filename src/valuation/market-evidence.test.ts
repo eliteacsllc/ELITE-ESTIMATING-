@@ -39,3 +39,9 @@ test("market evidence rejects invalid timestamp and non-finite amount", () => {
 test("market evidence rejects schema mismatch", () => {
   assert.equal(acceptMarketEvidence({ ...base, schemaVersion: "legacy" as typeof AUTOMOTIVE_MARKET_EVIDENCE_SCHEMA_VERSION }), false);
 });
+
+
+test("market evidence rejects unsupported runtime enums", () => {
+  assert.equal(acceptMarketEvidence({ ...base, kind: "unknown" as MarketEvidenceRecord["kind"] }), false);
+  assert.equal(acceptMarketEvidence({ ...base, licenseClass: "unknown" as MarketEvidenceRecord["licenseClass"] }), false);
+});
