@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EstimatingService } from '../application/estimating-service.js';
 import { IdempotentEstimateCreationService } from '../application/idempotent-estimate-create.js';
@@ -40,13 +40,18 @@ import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
 import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
 import { MemoryClaimsInspectionInbox, PostgresClaimsInspectionInbox, parseClaimsInspectionEvent, verifyClaimsWebhook } from '../integrations/claims-inspection.js';
-import { InMemoryEstimaticsEvidenceReceiptRepository, PostgresEstimaticsEvidenceReceiptRepository } from '../connectors/estimatics-receipts.js';
+import { InMemoryEstimaticsEvidenceReceiptRepository, PostgresEstimaticsEvidenceReceiptRepository, pinEstimaticsEvidence } from '../connectors/estimatics-receipts.js';
+import { queryEstimatics } from '../connectors/estimatics-client.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
 const requireBlobStorage = process.env.ELITE_REQUIRE_BLOB_STORAGE === '1';
 const requireIdempotency = process.env.ELITE_REQUIRE_IDEMPOTENCY === '1';
 const requireRateLimit = process.env.ELITE_REQUIRE_RATE_LIMIT === '1';
+const requireEstimatics = process.env.ELITE_REQUIRE_ESTIMATICS === '1';
+const estimaticsBaseUrl = process.env.ELITE_ESTIMATICS_SERVICE_URL?.trim() || '';
+const estimaticsToken = process.env.ELITE_ESTIMATICS_SERVICE_TOKEN?.trim() || '';
+const estimaticsServiceConfigured = Boolean(estimaticsBaseUrl && estimaticsToken);
 const metricsToken = process.env.ELITE_METRICS_TOKEN?.trim() || null;
 if (metricsToken && metricsToken.length < 32) throw new Error('metrics_token_too_short');
 const outboxHealthPolicy = outboxHealthPolicyFromEnv();
@@ -192,6 +197,8 @@ async function readiness(): Promise<{
   entitlementStorage: boolean;
   decisionStorage: boolean;
   estimaticsEvidenceStorage: boolean;
+  estimaticsServiceConfigured: boolean;
+  estimaticsRequired: boolean;
   idempotencyRequired: boolean;
   rateLimitConfigured: boolean;
   rateLimitDurable: boolean;
@@ -219,7 +226,10 @@ async function readiness(): Promise<{
   const idempotencyStorage = postgresIdempotency ? await postgresIdempotency.health().catch(() => false) : allowEphemeral;
   const entitlementStorage = postgresEntitlements ? await postgresEntitlements.health().catch(() => false) : allowEphemeral;
   const decisionStorage = postgresDecisions ? await postgresDecisions.health().catch(() => false) : allowEphemeral;
-  const estimaticsEvidenceStorage = Boolean(postgresEstimaticsReceipts) || allowEphemeral;
+  const estimaticsEvidenceStorage = postgresEstimaticsReceipts
+    ? await postgresEstimaticsReceipts.health().catch(() => false)
+    : allowEphemeral;
+  const estimaticsReady = !requireEstimatics || (estimaticsEvidenceStorage && estimaticsServiceConfigured);
   const blobStorageConfigured = Boolean(blobStore);
   const blobReady = !requireBlobStorage || blobStorageConfigured;
   const rateLimitConfigured = Boolean(rateLimiter);
@@ -231,7 +241,7 @@ async function readiness(): Promise<{
     ? evaluateOutboxHealth(outboxHealth, outboxHealthPolicy)
     : { healthy: false, reasons: ['outbox_health_unavailable'] };
   return {
-    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && decisionStorage && estimaticsEvidenceStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && decisionStorage && estimaticsReady && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
     authConfigured,
     authMode,
     durableStorage,
@@ -244,6 +254,8 @@ async function readiness(): Promise<{
     entitlementStorage,
     decisionStorage,
     estimaticsEvidenceStorage,
+    estimaticsServiceConfigured,
+    estimaticsRequired: requireEstimatics,
     idempotencyRequired: requireIdempotency,
     rateLimitConfigured,
     rateLimitDurable,
@@ -313,7 +325,7 @@ const server = createServer(async (req, res) => {
           evidence: state.evidenceStorage && (!state.blobStorageRequired || state.blobStorageConfigured) ? 'available' : 'degraded',
           governance: state.authConfigured && state.entitlementStorage && state.decisionStorage && (!state.rateLimitRequired || state.rateLimitHealthy) ? 'available' : 'degraded',
           lifecycle: state.lifecycleOutbox && state.outboxHealthy ? 'available' : 'degraded',
-          estimaticsEvidence: state.estimaticsEvidenceStorage ? 'available' : 'degraded',
+          estimaticsEvidence: state.estimaticsEvidenceStorage && (!state.estimaticsRequired || state.estimaticsServiceConfigured) ? 'available' : 'degraded',
           idempotency: state.idempotencyStorage ? 'available' : 'degraded',
         },
       });
