@@ -197,9 +197,13 @@ export class EstimatingService {
       ...(estimaticsEvidence ? { estimaticsEvidence: {
         schemaVersion: estimaticsEvidence.schemaVersion,
         requestId: estimaticsEvidence.requestId,
+        tenantId: estimaticsEvidence.tenantId,
+        estimateId: estimaticsEvidence.estimateId,
         sourceReceiptDigest: estimaticsEvidence.sourceReceiptDigest,
         envelopeDigest: estimaticsEvidence.envelopeDigest,
         recordRefs: estimaticsEvidence.recordRefs,
+        blockedRecordIds: estimaticsEvidence.blockedRecordIds,
+        requiresHumanReview: estimaticsEvidence.requiresHumanReview,
         correlationId: estimaticsEvidence.correlationId,
         claimId: estimaticsEvidence.claimId ?? null,
         assignmentId: estimaticsEvidence.assignmentId ?? null,
