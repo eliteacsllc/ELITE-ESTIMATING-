@@ -11,6 +11,7 @@ export * from './connectors/global-source-catalog.js';
 export * from './connectors/nws-weather.js';
 export * from './connectors/public-certification.js';
 export * from './domains/registry.js';
+export * from './domains/asset-profiles.js';
 export * from './platform/features.js';
 export * from './platform/competitive-stack.js';
 export * from './platform/harmonization.js';
