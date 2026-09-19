@@ -8,12 +8,12 @@ Eliminate estimating fragmentation by providing one standards-first platform for
 
 - Passenger vehicles
 - Commercial vehicles and tractor-trailers
-- Heavy equipment and construction equipment
+- Heavy equipment, construction equipment, agricultural equipment, and material-handling equipment
 - Motorcycles, ATVs, UTVs
 - RVs and motorhomes
 - Boats and marine assets
 - Ambulances and emergency vehicles
-- Cranes and specialty machinery
+- Cranes, industrial machinery, manufacturing equipment, and specialty machinery
 - Residential and commercial property
 - Contents, catastrophe, restoration, and specialty losses
 
@@ -83,3 +83,15 @@ Foundation initialized. The first production contracts cover domain-neutral esti
 - Mobile/desktop/web clients
 - Enterprise security/compliance
 - Automated test, audit, and deployment pipelines
+
+
+## First-class specialty asset domains
+
+Elite Estimating treats complex assets as governed estimating domains rather than labels on a generic vehicle workflow.
+
+- **Heavy equipment**: serial/configuration, operating hours, attachments, hydraulics, running gear, structure, mobilization, safety, and repair-vs-replace economics.
+- **RV / motorhome**: chassis plus coach structure, 12V/120V electrical, LP gas, plumbing, HVAC, appliances, slide-outs, moisture intrusion, and valuation.
+- **Marine / boat**: HIN/engine identity, hull/deck/stringer/transom, propulsion, fuel, steering, electrical, navigation, plumbing, rigging, haul-out, trailer, and water-test controls.
+- **Industrial machinery**: nameplate/serial identity, hours/cycles/capacity, installation, mechanical and fluid-power systems, PLC/HMI controls, tooling, guarding/LOTO, calibration, rigging, commissioning, downtime evidence, and obsolescence/valuation.
+
+All domains reuse the same estimate, evidence, provenance, tenant, audit, approval, integration, and human-governance contracts. Domain profiles add the asset-specific workflow without fragmenting Claims Management, Damage IQ, Estimatics Library, Elite QA, or EVN.
