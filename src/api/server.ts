@@ -293,9 +293,8 @@ const server = createServer(async (req, res) => {
       const event=parseClaimsInspectionEvent(raw);
       const headerEvent=singleHeader(req.headers['x-elite-event']);
       if(headerEvent && headerEvent!==event.event_type) return send(res,409,{error:'event_header_mismatch'});
-      const delivery=singleHeader(req.headers['x-elite-delivery']);
-      const key=delivery||event.id;
-      const accepted=await claimsInspectionInbox.accept(event,key);
+      // Retry delivery IDs may change; the signed claim event ID is the stable replay key.
+      const accepted=await claimsInspectionInbox.accept(event,event.id);
       return send(res,accepted.replayed?200:202,{accepted:true,replayed:accepted.replayed,status:accepted.row.status,claimId:accepted.row.claimId,inspectionId:accepted.row.inspectionId});
     }
 
