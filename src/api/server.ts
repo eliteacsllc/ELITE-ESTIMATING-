@@ -39,6 +39,7 @@ import { evaluateOutboxHealth, outboxHealthPolicyFromEnv, renderOperationalMetri
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
 import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
+import { MemoryClaimsInspectionInbox, PostgresClaimsInspectionInbox, parseClaimsInspectionEvent, verifyClaimsWebhook } from '../integrations/claims-inspection.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
@@ -91,6 +92,7 @@ const entitlementService = new TenantEntitlementService(entitlementRepository);
 const decisionService = new GovernedDecisionService(repository, entitlementService, decisionRepository, auditSink);
 const interchange = new EliteJsonInterchangeAdapter();
 const httpMetrics = new HttpMetrics();
+const claimsInspectionInbox = databaseUrl ? new PostgresClaimsInspectionInbox(databaseUrl) : new MemoryClaimsInspectionInbox();
 
 function baseHeaders(): Record<string, string> {
   return {
@@ -123,6 +125,12 @@ function sendText(res: ServerResponse, status: number, contentType: string, payl
     ...(csp ? { 'content-security-policy': csp } : {}),
   });
   res.end(payload);
+}
+
+async function rawBody(req: IncomingMessage, maxBytes=1_000_000): Promise<string> {
+  const chunks: Buffer[]=[]; let size=0;
+  for await (const chunk of req) { const b=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk); size+=b.length; if(size>maxBytes) throw new Error('request_too_large'); chunks.push(b); }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 async function json(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -276,6 +284,21 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/supp.js') return sendText(res, 200, 'text/javascript; charset=utf-8', supplementManagerJs);
     if (req.method === 'GET' && req.url === '/supp.css') return sendText(res, 200, 'text/css; charset=utf-8', supplementManagerCss);
     if (req.method === 'GET' && req.url === '/health') return send(res, 200, { status: 'ok', service: 'elite-estimating' });
+    if (req.method === 'POST' && req.url === '/v1/integrations/claims/inspection') {
+      const secret=process.env.CLAIMS_WEBHOOK_SECRET?.trim()||'';
+      if(secret.length<32) return send(res,503,{error:'claims_webhook_secret_unavailable'});
+      const raw=await rawBody(req);
+      const signature=singleHeader(req.headers['x-elite-signature'])||'';
+      if(!verifyClaimsWebhook(secret,raw,signature)) return send(res,401,{error:'invalid_signature'});
+      const event=parseClaimsInspectionEvent(raw);
+      const headerEvent=singleHeader(req.headers['x-elite-event']);
+      if(headerEvent && headerEvent!==event.event_type) return send(res,409,{error:'event_header_mismatch'});
+      const delivery=singleHeader(req.headers['x-elite-delivery']);
+      const key=delivery||event.id;
+      const accepted=await claimsInspectionInbox.accept(event,key);
+      return send(res,accepted.replayed?200:202,{accepted:true,replayed:accepted.replayed,status:accepted.row.status,claimId:accepted.row.claimId,inspectionId:accepted.row.inspectionId});
+    }
+
     if (req.method === 'GET' && req.url === '/ready') {
       const state = await readiness();
       return send(res, state.ready ? 200 : 503, {
