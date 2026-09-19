@@ -8,12 +8,16 @@ export type MarketEvidenceKind =
   | "salvage_bid"
   | "guide_value";
 
+const MARKET_EVIDENCE_KINDS = new Set<MarketEvidenceKind>(["dealer_quote","retail_comparable","wholesale_comparable","auction_result","salvage_bid","guide_value"]);
+
 export type MarketEvidenceLicenseClass =
   | "owned"
   | "licensed"
   | "public"
   | "customer_provided"
   | "internal";
+
+const MARKET_EVIDENCE_LICENSE_CLASSES = new Set<MarketEvidenceLicenseClass>(["owned","licensed","public","customer_provided","internal"]);
 
 export interface MarketEvidenceRecord {
   schemaVersion: typeof AUTOMOTIVE_MARKET_EVIDENCE_SCHEMA_VERSION;
@@ -41,6 +45,8 @@ export function acceptMarketEvidence(record: MarketEvidenceRecord): boolean {
     record.schemaVersion === AUTOMOTIVE_MARKET_EVIDENCE_SCHEMA_VERSION &&
     record.id &&
     record.tenantId &&
+    MARKET_EVIDENCE_KINDS.has(record.kind) &&
+    MARKET_EVIDENCE_LICENSE_CLASSES.has(record.licenseClass) &&
     record.provider &&
     record.sourceId &&
     Number.isFinite(observedAtMs) &&
