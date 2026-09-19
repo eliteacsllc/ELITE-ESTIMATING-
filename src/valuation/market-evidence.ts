@@ -22,15 +22,20 @@ export interface MarketEvidenceRecord {
 }
 
 export function acceptMarketEvidence(record: MarketEvidenceRecord): boolean {
+  const observedAtMs = Date.parse(record.observedAt);
   return Boolean(
     record.id &&
     record.provider &&
     record.sourceId &&
+    Number.isFinite(observedAtMs) &&
+    Number.isFinite(record.amount) &&
     record.amount >= 0 &&
     record.currency &&
     record.licensedOrAuthorized &&
+    Number.isFinite(record.confidence) &&
     record.confidence >= 0 &&
-    record.confidence <= 1,
+    record.confidence <= 1 &&
+    (record.mileage === undefined || (Number.isFinite(record.mileage) && record.mileage >= 0)),
   );
 }
 
@@ -39,7 +44,7 @@ export function normalizeMarketEvidence(records: MarketEvidenceRecord[]): Market
   return records
     .filter(acceptMarketEvidence)
     .filter((record) => {
-      const key = `${record.provider}:${record.sourceId}`;
+      const key = `${record.provider.trim().toLowerCase()}:${record.sourceId.trim()}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
