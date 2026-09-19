@@ -10,17 +10,17 @@ Use for:
 - estimate/supplement approval lifecycle
 - dispatch and SLA tracking
 
-Boundary: Claims Management owns the claim workflow; Elite Estimating owns estimate calculations, estimate evidence, procedures, pricing and revisions.
+Boundary: Claims Management owns the claim workflow, authoritative inspection evidence and routing; Elite Estimating owns estimate calculations, estimate-specific evidence/provenance, procedures, pricing and revisions. Claims sends `inspection.ready_for_estimating` only after authorized review.
 
-## veh-photo-labeler-
+## Elite Damage IQ + Claims Management Mobile
 Use for:
-- guided inspection capture
-- photo naming/classification
-- damage-area evidence
-- mobile camera workflows
-- future measurement/negative/depth capture adapters
+- guided field inspection and camera/photo-library capture inside Claims Management Mobile
+- governed photo/video/document evidence
+- component/area labeling and damage findings
+- inspection completeness, confidence and provenance
+- human-correctable physical-AI findings
 
-Boundary: Photo Labeler owns capture UX; Elite Estimating owns the evidence record and estimate linkage.
+Boundary: Claims Management owns the authoritative claim, assignment, evidence record and routing. Damage IQ is the independently deployable perception/inspection service embedded into the mobile experience. Elite Estimating owns estimate authoring, calculations, revisions and estimate-specific evidence linkage; it consumes only Claims-authorized inspection packages.
 
 ## echelon-ai-os
 Use for:
