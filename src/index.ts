@@ -94,3 +94,4 @@ export * from './observability/metrics.js';
 export * from './observability/agent-mesh-metrics.js';
 export * from './observability/operational.js';
 export * from './launch/readiness.js';
+export * from "./automotive/vehicle-condition.js";
