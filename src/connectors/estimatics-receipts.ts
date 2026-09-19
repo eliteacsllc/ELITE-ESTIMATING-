@@ -107,5 +107,9 @@ export class PostgresEstimaticsEvidenceReceiptRepository implements EstimaticsEv
   async latestByEstimate(tenantId:string,estimateId:string){
     const rows=await this.listByEstimate(tenantId,estimateId); return rows.at(-1)??null;
   }
+  async health(){
+    const result=await this.pool.query("SELECT to_regclass('public.estimatics_evidence_receipts') IS NOT NULL AS ok");
+    return result.rows[0]?.ok===true;
+  }
   async close(){await this.pool.end();}
 }
