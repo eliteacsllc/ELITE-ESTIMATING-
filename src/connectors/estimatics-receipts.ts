@@ -54,6 +54,7 @@ export function pinEstimaticsEvidence(
 export interface EstimaticsEvidenceReceiptRepository {
   save(receipt: EstimaticsEvidenceReceipt): Promise<EstimaticsEvidenceReceipt>;
   listByEstimate(tenantId:string,estimateId:string): Promise<EstimaticsEvidenceReceipt[]>;
+  latestByEstimate(tenantId:string,estimateId:string): Promise<EstimaticsEvidenceReceipt|null>;
 }
 
 export class InMemoryEstimaticsEvidenceReceiptRepository implements EstimaticsEvidenceReceiptRepository {
@@ -67,6 +68,9 @@ export class InMemoryEstimaticsEvidenceReceiptRepository implements EstimaticsEv
   }
   async listByEstimate(tenantId:string,estimateId:string){
     return [...this.rows.values()].filter(r=>r.tenantId===tenantId&&r.estimateId===estimateId).map(r=>structuredClone(r));
+  }
+  async latestByEstimate(tenantId:string,estimateId:string){
+    const rows=await this.listByEstimate(tenantId,estimateId); return rows.at(-1)??null;
   }
 }
 
@@ -99,6 +103,9 @@ export class PostgresEstimaticsEvidenceReceiptRepository implements EstimaticsEv
       recordRefs:Array.isArray(x.record_refs)?x.record_refs:[],blockedRecordIds:Array.isArray(x.blocked_record_ids)?x.blocked_record_ids:[],
       requiresHumanReview:Boolean(x.requires_human_review)
     }));
+  }
+  async latestByEstimate(tenantId:string,estimateId:string){
+    const rows=await this.listByEstimate(tenantId,estimateId); return rows.at(-1)??null;
   }
   async close(){await this.pool.end();}
 }
