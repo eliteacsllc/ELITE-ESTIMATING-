@@ -285,7 +285,7 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/supp.css') return sendText(res, 200, 'text/css; charset=utf-8', supplementManagerCss);
     if (req.method === 'GET' && req.url === '/health') return send(res, 200, { status: 'ok', service: 'elite-estimating' });
     if (req.method === 'POST' && req.url === '/v1/integrations/claims/inspection') {
-      const secret=process.env.CLAIMS_WEBHOOK_SECRET?.trim()||'';
+      const secret=process.env.ELITE_CLAIMS_WEBHOOK_SECRET?.trim()||'';
       if(secret.length<32) return send(res,503,{error:'claims_webhook_secret_unavailable'});
       const raw=await rawBody(req);
       const signature=singleHeader(req.headers['x-elite-signature'])||'';
