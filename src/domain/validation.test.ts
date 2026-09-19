@@ -17,3 +17,14 @@ test('rejects cross-currency line money', () => {
   };
   assert.ok(validateEstimateLineInput(line, 'USD').some((value) => value.startsWith('line_currency_mismatch')));
 });
+
+test('accepts supported specialty asset identities', () => {
+  assert.deepEqual(validateAssetIdentity({ assetClass: 'industrial_machinery', serialNumber: 'CNC-4421', operatingHours: 12500 }), []);
+  assert.deepEqual(validateAssetIdentity({ assetClass: 'marine', hin: 'ABC12345D626' }), []);
+  assert.deepEqual(validateAssetIdentity({ assetClass: 'agricultural_equipment', serialNumber: 'AG-991' }), []);
+});
+
+test('rejects invalid specialty meter and HIN values', () => {
+  assert.ok(validateAssetIdentity({ assetClass: 'industrial_machinery', operatingHours: -1 }).includes('invalid_operating_hours'));
+  assert.ok(validateAssetIdentity({ assetClass: 'marine', hin: 'x' }).includes('invalid_hin_format'));
+});

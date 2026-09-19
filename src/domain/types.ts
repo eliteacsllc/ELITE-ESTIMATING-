@@ -3,6 +3,9 @@ export type AssetClass =
   | 'commercial_vehicle'
   | 'tractor_trailer'
   | 'heavy_equipment'
+  | 'agricultural_equipment'
+  | 'material_handling_equipment'
+  | 'industrial_machinery'
   | 'motorcycle'
   | 'atv_utv'
   | 'rv'
@@ -31,12 +34,18 @@ export type SourceProvenance = {
 export type AssetIdentity = {
   assetClass: AssetClass;
   vin?: string;
+  hin?: string;
   serialNumber?: string;
+  assetTag?: string;
   year?: number;
   make?: string;
   model?: string;
   configuration?: string;
+  operatingHours?: number;
+  meterReading?: number;
+  meterUnit?: string;
   jurisdiction?: string;
+  attributes?: Record<string, string | number | boolean>;
 };
 
 export type EstimateOperation =
