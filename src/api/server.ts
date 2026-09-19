@@ -69,6 +69,7 @@ const postgresIdempotency = databaseUrl ? new PostgresIdempotencyRepository(data
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
 const postgresEntitlements = databaseUrl ? new PostgresTenantFeatureProfileRepository(databaseUrl) : null;
 const postgresDecisions = databaseUrl ? new PostgresDecisionRecordRepository(databaseUrl) : null;
+const postgresClaimsHandoff = databaseUrl ? new PostgresClaimsHandoffContextRepository(databaseUrl) : null;
 const memoryLifecycle = postgresOutbox ? null : new MemoryLifecycleSink();
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
@@ -79,7 +80,7 @@ const importReceiptRepository: ImportReceiptRepository = postgresImportReceipts 
 const idempotencyRepository: IdempotencyRepository = postgresIdempotency ?? new InMemoryIdempotencyRepository();
 const entitlementRepository: TenantFeatureProfileRepository = postgresEntitlements ?? new InMemoryTenantFeatureProfileRepository();
 const decisionRepository: DecisionRecordRepository = postgresDecisions ?? new InMemoryDecisionRecordRepository();
-const claimsHandoffRepository: ClaimsHandoffContextRepository = databaseUrl ? new PostgresClaimsHandoffContextRepository(databaseUrl) : new InMemoryClaimsHandoffContextRepository();
+const claimsHandoffRepository: ClaimsHandoffContextRepository = postgresClaimsHandoff ?? new InMemoryClaimsHandoffContextRepository();
 const lifecycleSink: LifecycleSink = postgresOutbox ?? memoryLifecycle!;
 const lifecycleHealthSource = postgresOutbox ?? memoryLifecycle!;
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
@@ -188,6 +189,7 @@ async function readiness(): Promise<{
   idempotencyStorage: boolean;
   entitlementStorage: boolean;
   decisionStorage: boolean;
+  claimsHandoffStorage: boolean;
   idempotencyRequired: boolean;
   rateLimitConfigured: boolean;
   rateLimitDurable: boolean;
@@ -206,7 +208,7 @@ async function readiness(): Promise<{
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
-  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresIdempotency && postgresOutbox && postgresEntitlements && postgresDecisions);
+  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresIdempotency && postgresOutbox && postgresEntitlements && postgresDecisions && postgresClaimsHandoff);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
   const lifecycleOutbox = Boolean(postgresOutbox) || allowEphemeral;
   const evidenceStorage = Boolean(postgresEvidence) || allowEphemeral;
@@ -215,6 +217,7 @@ async function readiness(): Promise<{
   const idempotencyStorage = postgresIdempotency ? await postgresIdempotency.health().catch(() => false) : allowEphemeral;
   const entitlementStorage = postgresEntitlements ? await postgresEntitlements.health().catch(() => false) : allowEphemeral;
   const decisionStorage = postgresDecisions ? await postgresDecisions.health().catch(() => false) : allowEphemeral;
+  const claimsHandoffStorage = postgresClaimsHandoff ? await postgresClaimsHandoff.health().catch(() => false) : allowEphemeral;
   const blobStorageConfigured = Boolean(blobStore);
   const blobReady = !requireBlobStorage || blobStorageConfigured;
   const rateLimitConfigured = Boolean(rateLimiter);
@@ -226,7 +229,7 @@ async function readiness(): Promise<{
     ? evaluateOutboxHealth(outboxHealth, outboxHealthPolicy)
     : { healthy: false, reasons: ['outbox_health_unavailable'] };
   return {
-    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && decisionStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && decisionStorage && claimsHandoffStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
     authConfigured,
     authMode,
     durableStorage,
@@ -238,6 +241,7 @@ async function readiness(): Promise<{
     idempotencyStorage,
     entitlementStorage,
     decisionStorage,
+    claimsHandoffStorage,
     idempotencyRequired: requireIdempotency,
     rateLimitConfigured,
     rateLimitDurable,
