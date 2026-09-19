@@ -473,6 +473,46 @@ const server = createServer(async (req, res) => {
         if (!Array.isArray(body.lines)) throw new Error('lines_array_required');
         return send(res, 200, await service.replaceLines(actor, id, body.lines as EstimateLine[]));
       }
+      if (req.method === 'POST' && parts[3] === 'estimatics' && parts[4] === 'resolve' && parts.length === 5) {
+        authorize(actor, 'estimate:update', actor.tenantId);
+        if (!estimaticsServiceConfigured) throw new Error('estimatics_service_unavailable');
+        const estimate = await service.get(actor, id);
+        const body = await json(req);
+        const year = Number(body.year ?? estimate.asset.year);
+        const make = String(body.make ?? estimate.asset.make ?? '').trim();
+        if (!Number.isSafeInteger(year) || year < 1886 || year > 2200 || !make) throw new Error('estimatics_vehicle_identity_incomplete');
+        const processed = await claimsInspectionInbox.list(actor.tenantId, 'processed', 200);
+        const claimLink = processed.find(row => row.estimateId === id);
+        const requestId = singleHeader(req.headers['x-request-id'])?.trim() || randomUUID();
+        const envelope = await queryEstimatics({
+          baseUrl: estimaticsBaseUrl,
+          token: estimaticsToken,
+          tenantId: actor.tenantId,
+          timeoutMs: Number(process.env.ELITE_ESTIMATICS_TIMEOUT_MS ?? 5000),
+          retries: 1,
+        }, {
+          year,
+          make,
+          ...(String(body.model ?? estimate.asset.model ?? '').trim() ? { model: String(body.model ?? estimate.asset.model).trim() } : {}),
+          ...(String(body.trim ?? '').trim() ? { trim: String(body.trim).trim() } : {}),
+          ...(String(body.engine ?? '').trim() ? { engine: String(body.engine).trim() } : {}),
+          ...(String(body.vin ?? estimate.asset.vin ?? '').trim() ? { vin: String(body.vin ?? estimate.asset.vin).trim() } : {}),
+          region: String(body.region ?? estimate.asset.jurisdiction ?? estimate.jurisdiction ?? 'US').trim() || 'US',
+          ...(Array.isArray(body.kinds) ? { kinds: body.kinds.map(value => String(value)) } : {}),
+        }, requestId);
+        const receipt = pinEstimaticsEvidence(envelope, actor.tenantId, {
+          estimateId: id,
+          ...(estimate.claimId ? { claimId: estimate.claimId } : {}),
+          ...(claimLink?.assignmentId ? { assignmentId: claimLink.assignmentId } : {}),
+          ...(claimLink?.inspectionId ? { inspectionId: claimLink.inspectionId } : {}),
+          correlationId: String(body.correlationId ?? claimLink?.inspectionId ?? requestId).trim(),
+        });
+        const savedReceipt = await estimaticsReceiptRepository.save(receipt);
+        return send(res, 200, {
+          status: savedReceipt.blockedRecordIds.length ? 'blocked' : savedReceipt.requiresHumanReview ? 'human_review_required' : 'resolved',
+          receipt: savedReceipt,
+        });
+      }
       if (req.method === 'POST' && parts[3] === 'approve') return send(res, 200, await service.approve(actor, id));
       if (req.method === 'POST' && parts[3] === 'void') return send(res, 200, await service.void(actor, id));
     }
@@ -487,8 +527,15 @@ const server = createServer(async (req, res) => {
         || message === 'idempotency_request_in_progress'
         || message === 'idempotency_resource_conflict'
         || message === 'estimate_concurrent_modification'
-        || message === 'evidence_source_conflict' ? 409
-      : message === 'blob_storage_not_configured' ? 503
+        || message === 'evidence_source_conflict'
+        || message === 'estimatics_evidence_required'
+        || message === 'estimatics_knowledge_blocked'
+        || message === 'estimatics_human_review_required'
+        || message === 'estimatics_vehicle_identity_incomplete' ? 409
+      : message === 'blob_storage_not_configured'
+        || message === 'estimatics_service_unavailable'
+        || message.startsWith('estimatics_http_5')
+        || message === 'estimatics_request_failed' ? 503
       : message === 'request_too_large' ? 413
       : 400;
     const validation = new Set(['asset_required', 'idempotency_key_required', 'invalid_damage_graph_revision', 'lines_array_required', 'request_too_large']);
