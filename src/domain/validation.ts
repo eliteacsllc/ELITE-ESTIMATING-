@@ -1,7 +1,8 @@
 import type { AssetClass, AssetIdentity, EstimateLine } from './types.js';
 
 const assetClasses = new Set<AssetClass>([
-  'passenger_vehicle','commercial_vehicle','tractor_trailer','heavy_equipment','motorcycle','atv_utv','rv','marine',
+  'passenger_vehicle','commercial_vehicle','tractor_trailer','heavy_equipment','agricultural_equipment',
+  'material_handling_equipment','industrial_machinery','motorcycle','atv_utv','rv','marine',
   'ambulance_emergency','crane_specialty','residential_property','commercial_property','contents','other',
 ]);
 
@@ -19,7 +20,12 @@ export function validateAssetIdentity(asset: AssetIdentity): string[] {
   if (!asset || !assetClasses.has(asset.assetClass)) errors.push('unsupported_asset_class');
   if (asset.year !== undefined && (!Number.isInteger(asset.year) || asset.year < 1800 || asset.year > 2200)) errors.push('invalid_asset_year');
   if (asset.vin && !/^[A-HJ-NPR-Z0-9]{5,25}$/i.test(asset.vin)) errors.push('invalid_vin_format');
+  if (asset.hin && (asset.hin.length < 5 || asset.hin.length > 40)) errors.push('invalid_hin_format');
   if (asset.serialNumber && asset.serialNumber.length > 100) errors.push('serial_number_too_long');
+  if (asset.assetTag && asset.assetTag.length > 100) errors.push('asset_tag_too_long');
+  if (asset.operatingHours !== undefined && (!Number.isFinite(asset.operatingHours) || asset.operatingHours < 0 || asset.operatingHours > 10_000_000)) errors.push('invalid_operating_hours');
+  if (asset.meterReading !== undefined && (!Number.isFinite(asset.meterReading) || asset.meterReading < 0 || asset.meterReading > 1_000_000_000)) errors.push('invalid_meter_reading');
+  if (asset.meterUnit && asset.meterUnit.length > 40) errors.push('meter_unit_too_long');
   return errors;
 }
 
