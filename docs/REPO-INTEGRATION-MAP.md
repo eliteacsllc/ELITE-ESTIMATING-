@@ -22,6 +22,15 @@ Use for:
 
 Boundary: Claims Management owns the authoritative claim, assignment, evidence record and routing. Damage IQ is the independently deployable perception/inspection service embedded into the mobile experience. Elite Estimating owns estimate authoring, calculations, revisions and estimate-specific evidence linkage; it consumes only Claims-authorized inspection packages.
 
+## Estimatics Library
+Use for:
+- governed OEM/repair-knowledge references
+- provenance-preserving procedure context
+- safety-domain signals and human-review requirements
+- durable evidence receipts tied to claim / assignment / inspection / estimate correlation
+
+Boundary: Estimatics provides governed reference knowledge, not repair authorization. Elite Estimating remains responsible for estimate authoring and deterministic calculation. Blocked or human-review-required Estimatics results must never silently become estimate operations.
+
 ## echelon-ai-os
 Use for:
 - orchestration patterns
