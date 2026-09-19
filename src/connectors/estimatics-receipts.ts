@@ -21,7 +21,7 @@ export type EstimaticsEvidenceReceipt = {
   schemaVersion: string;
   sourceReceiptDigest: string;
   envelopeDigest: string;
-  recordRefs: Array<{recordId:string;fingerprint:string}>;
+  recordRefs: Array<{recordId:string;fingerprint:string;retrievedAt:string;sourceIds:string[]}>;
   blockedRecordIds: string[];
   requiresHumanReview: boolean;
 };
@@ -45,7 +45,12 @@ export function pinEstimaticsEvidence(
     schemaVersion: envelope.schema_version,
     sourceReceiptDigest: envelope.source_receipt_digest,
     envelopeDigest: envelope.envelope_digest,
-    recordRefs: envelope.items.map(item=>({recordId:item.record_id,fingerprint:item.fingerprint})),
+    recordRefs: envelope.items.map(item=>({
+      recordId:item.record_id,
+      fingerprint:item.fingerprint,
+      retrievedAt:item.citations.reduce((latest,citation)=>citation.retrieved_at>latest?citation.retrieved_at:latest,item.citations[0]!.retrieved_at),
+      sourceIds:[...new Set(item.citations.map(citation=>citation.source_id))]
+    })),
     blockedRecordIds: [...envelope.blocked_record_ids],
     requiresHumanReview: envelope.requires_human_review,
   };
