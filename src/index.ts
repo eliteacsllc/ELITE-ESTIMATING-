@@ -109,3 +109,7 @@ export * from './valuation/demand-letter.js';
 export * from './valuation/redo.js';
 export * from './valuation/repair-estimate-analysis.js';
 export * from './valuation/multi-asset.js';
+
+export * from './intelligence/workspace.js';
+export * from './integrations/claims-management-inbound.js';
+export * from './integrations/claims-handoff-context.js';

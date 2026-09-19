@@ -39,6 +39,8 @@ import { evaluateOutboxHealth, outboxHealthPolicyFromEnv, renderOperationalMetri
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
 import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
+import { claimsEventIdempotencyKey, parseClaimsEstimatingReady, verifyClaimsManagementSignature } from '../integrations/claims-management-inbound.js';
+import { InMemoryClaimsHandoffContextRepository, PostgresClaimsHandoffContextRepository, type ClaimsHandoffContextRepository } from '../integrations/claims-handoff-context.js';
 import { MemoryClaimsInspectionInbox, PostgresClaimsInspectionInbox, parseClaimsInspectionEvent, verifyClaimsWebhook } from '../integrations/claims-inspection.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -68,6 +70,7 @@ const postgresIdempotency = databaseUrl ? new PostgresIdempotencyRepository(data
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
 const postgresEntitlements = databaseUrl ? new PostgresTenantFeatureProfileRepository(databaseUrl) : null;
 const postgresDecisions = databaseUrl ? new PostgresDecisionRecordRepository(databaseUrl) : null;
+const postgresClaimsHandoff = databaseUrl ? new PostgresClaimsHandoffContextRepository(databaseUrl) : null;
 const memoryLifecycle = postgresOutbox ? null : new MemoryLifecycleSink();
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
@@ -78,6 +81,7 @@ const importReceiptRepository: ImportReceiptRepository = postgresImportReceipts 
 const idempotencyRepository: IdempotencyRepository = postgresIdempotency ?? new InMemoryIdempotencyRepository();
 const entitlementRepository: TenantFeatureProfileRepository = postgresEntitlements ?? new InMemoryTenantFeatureProfileRepository();
 const decisionRepository: DecisionRecordRepository = postgresDecisions ?? new InMemoryDecisionRecordRepository();
+const claimsHandoffRepository: ClaimsHandoffContextRepository = postgresClaimsHandoff ?? new InMemoryClaimsHandoffContextRepository();
 const lifecycleSink: LifecycleSink = postgresOutbox ?? memoryLifecycle!;
 const lifecycleHealthSource = postgresOutbox ?? memoryLifecycle!;
 const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
@@ -188,6 +192,7 @@ async function readiness(): Promise<{
   idempotencyStorage: boolean;
   entitlementStorage: boolean;
   decisionStorage: boolean;
+  claimsHandoffStorage: boolean;
   idempotencyRequired: boolean;
   rateLimitConfigured: boolean;
   rateLimitDurable: boolean;
@@ -206,7 +211,7 @@ async function readiness(): Promise<{
   const serviceTokenConfigured = Boolean(process.env.ELITE_AUTH_SECRET && process.env.ELITE_AUTH_SECRET.length >= 32);
   const authMode = oidcVerifier ? 'oidc' : serviceTokenConfigured ? 'service_token' : 'unconfigured';
   const authConfigured = authMode !== 'unconfigured';
-  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresIdempotency && postgresOutbox && postgresEntitlements && postgresDecisions);
+  const durableStorage = Boolean(postgresRepository && postgresSupplements && postgresEvidence && postgresDamageGraphs && postgresImportReceipts && postgresIdempotency && postgresOutbox && postgresEntitlements && postgresDecisions && postgresClaimsHandoff);
   const databaseHealthy = postgresRepository ? await postgresRepository.health().catch(() => false) : allowEphemeral;
   const lifecycleOutbox = Boolean(postgresOutbox) || allowEphemeral;
   const evidenceStorage = Boolean(postgresEvidence) || allowEphemeral;
@@ -215,6 +220,7 @@ async function readiness(): Promise<{
   const idempotencyStorage = postgresIdempotency ? await postgresIdempotency.health().catch(() => false) : allowEphemeral;
   const entitlementStorage = postgresEntitlements ? await postgresEntitlements.health().catch(() => false) : allowEphemeral;
   const decisionStorage = postgresDecisions ? await postgresDecisions.health().catch(() => false) : allowEphemeral;
+  const claimsHandoffStorage = postgresClaimsHandoff ? await postgresClaimsHandoff.health().catch(() => false) : allowEphemeral;
   const blobStorageConfigured = Boolean(blobStore);
   const blobReady = !requireBlobStorage || blobStorageConfigured;
   const rateLimitConfigured = Boolean(rateLimiter);
@@ -226,7 +232,7 @@ async function readiness(): Promise<{
     ? evaluateOutboxHealth(outboxHealth, outboxHealthPolicy)
     : { healthy: false, reasons: ['outbox_health_unavailable'] };
   return {
-    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && decisionStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && decisionStorage && claimsHandoffStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
     authConfigured,
     authMode,
     durableStorage,
@@ -238,6 +244,7 @@ async function readiness(): Promise<{
     idempotencyStorage,
     entitlementStorage,
     decisionStorage,
+    claimsHandoffStorage,
     idempotencyRequired: requireIdempotency,
     rateLimitConfigured,
     rateLimitDurable,
@@ -283,6 +290,38 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/ops.css') return sendText(res, 200, 'text/css; charset=utf-8', operationsCss);
     if (req.method === 'GET' && req.url === '/supp.js') return sendText(res, 200, 'text/javascript; charset=utf-8', supplementManagerJs);
     if (req.method === 'GET' && req.url === '/supp.css') return sendText(res, 200, 'text/css; charset=utf-8', supplementManagerCss);
+    if (req.method === 'POST' && req.url === '/v1/integrations/claims-management/estimating-ready') {
+      const secret = process.env.CLAIMS_MANAGEMENT_WEBHOOK_SECRET?.trim() || '';
+      if (secret.length < 32) return send(res, 503, { error: 'claims_management_webhook_secret_unavailable' });
+      const raw = await rawBody(req);
+      if (!verifyClaimsManagementSignature(secret, raw, singleHeader(req.headers['x-elite-signature']) || '')) return send(res, 401, { error: 'invalid_claims_management_signature' });
+      const envelope = parseClaimsEstimatingReady(raw);
+      const detail = envelope.data.detail;
+      const actor: Principal = { userId: 'claims-management', tenantId: envelope.tenant_id, roles: ['estimator'] };
+      const existingContext = await claimsHandoffRepository.get(actor.tenantId, detail.inspection_id);
+      if (existingContext) return send(res, 200, { accepted: true, replayed: true, estimateId: existingContext.estimateId, inspectionId: detail.inspection_id });
+      const created = await idempotentCreateService.create(actor, claimsEventIdempotencyKey(envelope), {
+        claimId: detail.claim_id,
+        asset: detail.asset,
+        locale: 'en-US',
+        currency: 'USD',
+        jurisdiction: detail.asset.jurisdiction || 'US',
+      });
+      const context = await claimsHandoffRepository.save({
+        tenantId: actor.tenantId,
+        inspectionId: detail.inspection_id,
+        claimId: detail.claim_id,
+        assignmentId: detail.assignment_id,
+        estimateId: created.estimate.id,
+        inspectionType: detail.inspection_type,
+        evidenceIds: detail.evidence_ids,
+        findings: detail.findings,
+        correlationId: detail.correlation_id,
+        sourceEventId: envelope.id,
+        receivedAt: new Date().toISOString(),
+      });
+      return send(res, created.replayed ? 200 : 201, { accepted: true, replayed: created.replayed, estimateId: context.estimateId, inspectionId: context.inspectionId, evidenceRefs: context.evidenceIds });
+    }
     if (req.method === 'GET' && req.url === '/health') return send(res, 200, { status: 'ok', service: 'elite-estimating' });
     if (req.method === 'POST' && req.url === '/v1/integrations/claims/inspection') {
       const secret=process.env.ELITE_CLAIMS_WEBHOOK_SECRET?.trim()||'';
