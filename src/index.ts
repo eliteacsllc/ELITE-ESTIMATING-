@@ -113,3 +113,5 @@ export * from './valuation/multi-asset.js';
 export * from './intelligence/workspace.js';
 export * from './integrations/claims-management-inbound.js';
 export * from './integrations/claims-handoff-context.js';
+
+export * from './valuation/market-evidence.js';
