@@ -40,6 +40,7 @@ import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
 import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
 import { MemoryClaimsInspectionInbox, PostgresClaimsInspectionInbox, parseClaimsInspectionEvent, verifyClaimsWebhook } from '../integrations/claims-inspection.js';
+import { InMemoryEstimaticsEvidenceReceiptRepository, PostgresEstimaticsEvidenceReceiptRepository } from '../connectors/estimatics-receipts.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
@@ -68,6 +69,7 @@ const postgresIdempotency = databaseUrl ? new PostgresIdempotencyRepository(data
 const postgresOutbox = databaseUrl ? new PostgresLifecycleOutbox(databaseUrl) : null;
 const postgresEntitlements = databaseUrl ? new PostgresTenantFeatureProfileRepository(databaseUrl) : null;
 const postgresDecisions = databaseUrl ? new PostgresDecisionRecordRepository(databaseUrl) : null;
+const postgresEstimaticsReceipts = databaseUrl ? new PostgresEstimaticsEvidenceReceiptRepository(databaseUrl) : null;
 const memoryLifecycle = postgresOutbox ? null : new MemoryLifecycleSink();
 const auditSink = databaseUrl ? new PostgresAuditSink(databaseUrl) : new NoopAuditSink();
 const repository: EstimateRepository = postgresRepository ?? new InMemoryEstimateRepository();
@@ -78,9 +80,10 @@ const importReceiptRepository: ImportReceiptRepository = postgresImportReceipts 
 const idempotencyRepository: IdempotencyRepository = postgresIdempotency ?? new InMemoryIdempotencyRepository();
 const entitlementRepository: TenantFeatureProfileRepository = postgresEntitlements ?? new InMemoryTenantFeatureProfileRepository();
 const decisionRepository: DecisionRecordRepository = postgresDecisions ?? new InMemoryDecisionRecordRepository();
+const estimaticsReceiptRepository = postgresEstimaticsReceipts ?? new InMemoryEstimaticsEvidenceReceiptRepository();
 const lifecycleSink: LifecycleSink = postgresOutbox ?? memoryLifecycle!;
 const lifecycleHealthSource = postgresOutbox ?? memoryLifecycle!;
-const service = new EstimatingService(repository, [], auditSink, lifecycleSink);
+const service = new EstimatingService(repository, [], auditSink, lifecycleSink, estimaticsReceiptRepository);
 const idempotentCreateService = new IdempotentEstimateCreationService(service, repository, idempotencyRepository);
 const supplementService = new SupplementService(repository, supplementRepository, lifecycleSink);
 const idempotentSupplementCreateService = new IdempotentSupplementCreationService(supplementService, supplementRepository, idempotencyRepository);
@@ -188,6 +191,7 @@ async function readiness(): Promise<{
   idempotencyStorage: boolean;
   entitlementStorage: boolean;
   decisionStorage: boolean;
+  estimaticsEvidenceStorage: boolean;
   idempotencyRequired: boolean;
   rateLimitConfigured: boolean;
   rateLimitDurable: boolean;
@@ -215,6 +219,7 @@ async function readiness(): Promise<{
   const idempotencyStorage = postgresIdempotency ? await postgresIdempotency.health().catch(() => false) : allowEphemeral;
   const entitlementStorage = postgresEntitlements ? await postgresEntitlements.health().catch(() => false) : allowEphemeral;
   const decisionStorage = postgresDecisions ? await postgresDecisions.health().catch(() => false) : allowEphemeral;
+  const estimaticsEvidenceStorage = Boolean(postgresEstimaticsReceipts) || allowEphemeral;
   const blobStorageConfigured = Boolean(blobStore);
   const blobReady = !requireBlobStorage || blobStorageConfigured;
   const rateLimitConfigured = Boolean(rateLimiter);
@@ -226,7 +231,7 @@ async function readiness(): Promise<{
     ? evaluateOutboxHealth(outboxHealth, outboxHealthPolicy)
     : { healthy: false, reasons: ['outbox_health_unavailable'] };
   return {
-    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && decisionStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
+    ready: authConfigured && databaseHealthy && lifecycleOutbox && evidenceStorage && damageGraphStorage && importReceiptStorage && idempotencyStorage && entitlementStorage && decisionStorage && estimaticsEvidenceStorage && blobReady && rateLimitReady && outboxEvaluation.healthy && (durableStorage || allowEphemeral),
     authConfigured,
     authMode,
     durableStorage,
@@ -238,6 +243,7 @@ async function readiness(): Promise<{
     idempotencyStorage,
     entitlementStorage,
     decisionStorage,
+    estimaticsEvidenceStorage,
     idempotencyRequired: requireIdempotency,
     rateLimitConfigured,
     rateLimitDurable,
@@ -307,6 +313,7 @@ const server = createServer(async (req, res) => {
           evidence: state.evidenceStorage && (!state.blobStorageRequired || state.blobStorageConfigured) ? 'available' : 'degraded',
           governance: state.authConfigured && state.entitlementStorage && state.decisionStorage && (!state.rateLimitRequired || state.rateLimitHealthy) ? 'available' : 'degraded',
           lifecycle: state.lifecycleOutbox && state.outboxHealthy ? 'available' : 'degraded',
+          estimaticsEvidence: state.estimaticsEvidenceStorage ? 'available' : 'degraded',
           idempotency: state.idempotencyStorage ? 'available' : 'degraded',
         },
       });
@@ -502,6 +509,7 @@ const shutdown = async () => {
   if (postgresOutbox) await postgresOutbox.close();
   if (postgresEntitlements) await postgresEntitlements.close();
   if (postgresDecisions) await postgresDecisions.close();
+  if (postgresEstimaticsReceipts) await postgresEstimaticsReceipts.close();
   if (auditSink instanceof PostgresAuditSink) await auditSink.close();
   if (rateLimiter?.close) await rateLimiter.close();
 };
