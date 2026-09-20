@@ -36,6 +36,8 @@ test('an existing estimate is reloadable without pretending that local edits wer
   assert.match(indexHtml, /id="loadEstimateId"/);
   assert.match(indexHtml, /id="loadEstimate"/);
   assert.match(appJs, /Discard unsaved line edits/);
+  assert.match(appJs, /Discard unsaved draft line edits and create a new estimate/);
+  assert.match(appJs, /fresh\.revision!==estimate\.revision/);
   assert.match(appJs, /lines=loaded\.lines\|\|\[\]/);
   assert.match(appJs, /linesDirty=false/);
   assert.match(appCss, /workflowSteps/);
