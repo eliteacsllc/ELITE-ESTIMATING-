@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "elite.sdk-integration-adoption-v1",
+  "canonicalSource": "@elite/sdk",
+  "contractSchema": "elite.integration-envelope-v1",
+  "contractVersion": "1.0.0",
+  "compatibilityVector": ".elite/integration-compatibility-v1.json",
+  "standaloneRequired": true,
+  "runtimeSdkDependencyRequired": false,
+  "product": "elite-estimating",
+  "paths": [
+    {"id":"estimate-recommendation-handoff","direction":"inbound","peer":"elite-damage-iq","types":["damage.recommendation.ready"]}
+  ]
+}
