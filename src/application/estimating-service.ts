@@ -86,9 +86,10 @@ export class EstimatingService {
     return this.repository.listByClaim(principal.tenantId, normalized);
   }
 
-  async replaceLines(principal: Principal, id: string, lines: EstimateLine[]): Promise<Estimate> {
+  async replaceLines(principal: Principal, id: string, lines: EstimateLine[], expectedRevision?: number): Promise<Estimate> {
     authorize(principal, 'estimate:update', principal.tenantId);
     const current = await this.get(principal, id);
+    if (expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || expectedRevision !== current.revision)) throw new Error('estimate_concurrent_modification');
     if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
     assertValid(lines.flatMap((line) => validateEstimateLineInput(line, current.currency)));
     const saved = await this.repository.save(recalculate({ ...current, lines, status: 'review' }), current.updatedAt);
