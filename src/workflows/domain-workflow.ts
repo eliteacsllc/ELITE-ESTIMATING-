@@ -56,6 +56,7 @@ export function updateDomainWorkflowStep(state: DomainWorkflowState, input: Upda
   if (input.status === 'complete' && !input.completedBy?.trim()) throw new Error(`domain_workflow_completed_by_required:${input.stepId}`);
   if (input.status === 'not_applicable' && current.required && !input.note?.trim()) throw new Error(`domain_workflow_na_reason_required:${input.stepId}`);
   const evidenceRefs = [...new Set((input.evidenceRefs ?? current.evidenceRefs).map(value => value.trim()).filter(Boolean))];
+  if (current.required && input.status === 'complete' && evidenceRefs.length === 0) throw new Error(`domain_workflow_evidence_required:${input.stepId}`);
   const next: DomainWorkflowStep = {
     ...current,
     status: input.status,
@@ -76,7 +77,10 @@ export function auditDomainWorkflow(state: DomainWorkflowState): DomainWorkflowA
     if (step.required && step.status === 'pending') blockers.push(`required_step_pending:${step.id}`);
     if (step.status === 'complete' && !step.completedBy?.trim()) blockers.push(`completed_by_missing:${step.id}`);
     if (step.required && step.status === 'not_applicable' && !step.note?.trim()) blockers.push(`na_reason_missing:${step.id}`);
-    if (step.status === 'complete' && step.evidenceRefs.length === 0) warnings.push(`completion_without_evidence:${step.id}`);
+    if (step.status === 'complete' && step.evidenceRefs.length === 0) {
+      if (step.required) blockers.push(`required_completion_without_evidence:${step.id}`);
+      else warnings.push(`completion_without_evidence:${step.id}`);
+    }
   }
   return { green: blockers.length === 0, blockers, warnings };
 }
