@@ -42,3 +42,12 @@ test('an existing estimate is reloadable without pretending that local edits wer
   assert.match(appJs, /linesDirty=false/);
   assert.match(appCss, /workflowSteps/);
 });
+
+test('empty workspace never fabricates completed stages or live agent health', () => {
+  assert.doesNotMatch(indexHtml, /class="step done"/);
+  assert.doesNotMatch(indexHtml, /class="step active"/);
+  assert.doesNotMatch(indexHtml, /class="step warn"/);
+  assert.doesNotMatch(indexHtml, /<small>Pipeline control<\/small><\/div><span>ACTIVE<\/span>/);
+  assert.doesNotMatch(indexHtml, /<small>Evidence \/ provenance<\/small><\/div><span>READY<\/span>/);
+  assert.match(indexHtml, /NOT VERIFIED/);
+});
