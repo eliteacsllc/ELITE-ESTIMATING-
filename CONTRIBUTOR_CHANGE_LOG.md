@@ -36,3 +36,7 @@ Developer handling:
 - Functional scope: first-class specialty asset navigation, load-existing-estimate, server-backed domain checklist, human-reviewed scope editor, unsaved-change protection, explicit procedure evidence, accessible workflow status and browser-script regression tests.
 - Reconciliation: both exact contributor blobs were preserved on canonical `lab` in merge `0c59ec0275640ae04a32a11de716f2e2398d84c0`; main's other files and independent lab governance/checklist security changes were retained. The original PR remains open for provenance pending canonical release validation.
 - Security/quality: checklist status and mandatory evidence now validated server-side separately; no hosted-pass or deployment claim is made before exact-head checks pass.
+
+### Follow-up UI correction
+
+The contributor's UI and test blobs were first preserved exactly in merge `0c59ec0275640ae04a32a11de716f2e2398d84c0`. A subsequent, separately committed UI correction (`b1eeb359610dcd2e3d2fdc3451f2f30ed35cbc97`) changed only the default rail/agent status labels so an empty workspace no longer claims work is complete or unverified agents are active; the original contributor blobs remain available in PR #112 and merge history. Regression test added in `62b52d3e4726d046f02adb1bdcfc83a037fdcef9`.
