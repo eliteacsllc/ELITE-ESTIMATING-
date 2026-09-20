@@ -491,7 +491,8 @@ const server = createServer(async (req, res) => {
       if (req.method === 'PUT' && parts[3] === 'lines') {
         const body = await json(req);
         if (!Array.isArray(body.lines)) throw new Error('lines_array_required');
-        return send(res, 200, await service.replaceLines(actor, id, body.lines as EstimateLine[]));
+        if (body.expectedRevision !== undefined && (!Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 0)) throw new Error('estimate_concurrent_modification');
+        return send(res, 200, await service.replaceLines(actor, id, body.lines as EstimateLine[], body.expectedRevision as number | undefined));
       }
       if (req.method === 'POST' && parts[3] === 'approve') return send(res, 200, await service.approve(actor, id));
       if (req.method === 'POST' && parts[3] === 'void') return send(res, 200, await service.void(actor, id));
