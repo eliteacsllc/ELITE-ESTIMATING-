@@ -51,3 +51,9 @@ test('empty workspace never fabricates completed stages or live agent health', (
   assert.doesNotMatch(indexHtml, /<small>Evidence \/ provenance<\/small><\/div><span>READY<\/span>/);
   assert.match(indexHtml, /NOT VERIFIED/);
 });
+
+test('scope editor submits the loaded revision as a server-enforced precondition', () => {
+  assert.match(appJs, /expectedRevision:estimate\.revision/);
+  assert.match(appJs, /fresh\.revision!==estimate\.revision/);
+  assert.match(appJs, /if\(linesDirty\)throw new Error/);
+});
