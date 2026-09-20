@@ -26,3 +26,13 @@ Developer handling:
 - Re-read current head before any future estimating change.
 - Do not overwrite this functionality with stale pre-2026-09-10 copies.
 - Re-run canonical test/release gates before modifying or promoting related estimating logic.
+
+
+## Concurrent estimator workspace contribution — PR #112
+
+- Attribution: shared `eliteacsllc` GitHub account; individual/session identity not independently established.
+- Original PR/head: #112, `feat/estimating-domain-workflow-ux`, `440006386fc0a606ccbaffb4b5de2ccd0b42b70e`.
+- Original files: `src/web/assets.ts` (blob `d31d69cf953f9cdb3c1c645caa878124aa55f863`) and `src/web/assets.test.ts` (blob `76b12f83eea4e95406f83d45a698f70701fce2c0`).
+- Functional scope: first-class specialty asset navigation, load-existing-estimate, server-backed domain checklist, human-reviewed scope editor, unsaved-change protection, explicit procedure evidence, accessible workflow status and browser-script regression tests.
+- Reconciliation: both exact contributor blobs were preserved on canonical `lab` in merge `0c59ec0275640ae04a32a11de716f2e2398d84c0`; main's other files and independent lab governance/checklist security changes were retained. The original PR remains open for provenance pending canonical release validation.
+- Security/quality: checklist status and mandatory evidence now validated server-side separately; no hosted-pass or deployment claim is made before exact-head checks pass.
