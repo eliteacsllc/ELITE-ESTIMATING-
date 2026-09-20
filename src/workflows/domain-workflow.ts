@@ -51,9 +51,12 @@ export function updateDomainWorkflowStep(state: DomainWorkflowState, input: Upda
   const index = state.steps.findIndex(step => step.id === input.stepId);
   if (index < 0) throw new Error(`domain_workflow_step_not_found:${input.stepId}`);
   const current = state.steps[index]!;
+  if (!['pending', 'complete', 'not_applicable'].includes(input.status)) throw new Error(`domain_workflow_invalid_status:${input.stepId}`);
+  if (input.evidenceRefs !== undefined && (!Array.isArray(input.evidenceRefs) || input.evidenceRefs.some(ref => typeof ref !== 'string' || !ref.trim()))) throw new Error(`domain_workflow_invalid_evidence_refs:${input.stepId}`);
   if (input.status === 'complete' && !input.completedBy?.trim()) throw new Error(`domain_workflow_completed_by_required:${input.stepId}`);
   if (input.status === 'not_applicable' && current.required && !input.note?.trim()) throw new Error(`domain_workflow_na_reason_required:${input.stepId}`);
   const evidenceRefs = [...new Set((input.evidenceRefs ?? current.evidenceRefs).map(value => value.trim()).filter(Boolean))];
+  if (current.required && input.status === 'complete' && evidenceRefs.length === 0) throw new Error(`domain_workflow_evidence_required:${input.stepId}`);
   const next: DomainWorkflowStep = {
     ...current,
     status: input.status,
@@ -70,10 +73,14 @@ export function auditDomainWorkflow(state: DomainWorkflowState): DomainWorkflowA
   const blockers: string[] = [];
   const warnings: string[] = [];
   for (const step of state.steps) {
+    if (!['pending', 'complete', 'not_applicable'].includes(step.status)) blockers.push(`invalid_step_status:${step.id}`);
     if (step.required && step.status === 'pending') blockers.push(`required_step_pending:${step.id}`);
     if (step.status === 'complete' && !step.completedBy?.trim()) blockers.push(`completed_by_missing:${step.id}`);
     if (step.required && step.status === 'not_applicable' && !step.note?.trim()) blockers.push(`na_reason_missing:${step.id}`);
-    if (step.status === 'complete' && step.evidenceRefs.length === 0) warnings.push(`completion_without_evidence:${step.id}`);
+    if (step.status === 'complete' && step.evidenceRefs.length === 0) {
+      if (step.required) blockers.push(`required_completion_without_evidence:${step.id}`);
+      else warnings.push(`completion_without_evidence:${step.id}`);
+    }
   }
   return { green: blockers.length === 0, blockers, warnings };
 }
