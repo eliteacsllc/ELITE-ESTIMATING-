@@ -39,3 +39,18 @@ test('invalid evidence payload is rejected before checklist state changes', () =
   }), /invalid_evidence_refs/);
   assert.equal(state.steps[0]!.status, 'pending');
 });
+
+test('mandatory checklist completion requires evidence on write and audit', () => {
+  const state = createDomainWorkflow({ assetClass: 'heavy_equipment' }, 'heavy_equipment');
+  const stepId = state.steps[0]!.id;
+  assert.equal(state.steps[0]!.required, true);
+  assert.throws(() => updateDomainWorkflowStep(state, {
+    stepId, status: 'complete', completedBy: 'reviewer', evidenceRefs: [],
+  }), /domain_workflow_evidence_required/);
+  const forged = { ...state, steps: state.steps.map(step => ({
+    ...step, status: 'complete' as const, completedBy: 'reviewer', evidenceRefs: [],
+  })) };
+  const audit = auditDomainWorkflow(forged);
+  assert.equal(audit.green, false);
+  assert.ok(audit.blockers.includes('required_completion_without_evidence:' + stepId));
+});
