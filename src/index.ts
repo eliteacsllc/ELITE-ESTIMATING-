@@ -87,6 +87,7 @@ export * from './damage/visual-provider.js';
 export * from './intelligence/supplement-risk.js';
 export * from './intelligence/estimate-audit.js';
 export * from './intelligence/estimate-normalization.js';
+export * from './intelligence/work-hub-estimating.js';
 export * from './property/measurement.js';
 export * from './property/scope.js';
 export * from './benchmarks/estimate-benchmark.js';
