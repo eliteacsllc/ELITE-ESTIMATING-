@@ -86,3 +86,21 @@ test('attached domain workflow becomes an approval gate', async () => {
   const approved = await service.approve(reviewer, estimate.id);
   assert.equal(approved.status, 'approved');
 });
+
+test('stale scope editor revision is rejected without overwriting newer reviewer changes', async () => {
+  const service = new EstimatingService(new InMemoryEstimateRepository());
+  const created = await service.create(estimator, {
+    tenantId: 'tenant-a', asset: { assetClass: 'passenger_vehicle' },
+    locale: 'en-US', currency: 'USD', jurisdiction: 'US',
+  });
+  const first = await service.replaceLines(estimator, created.id, [approvedLine()], created.revision);
+  const otherLine = { ...approvedLine(), id: 'line-from-second-reviewer', component: 'rear bumper' };
+  const second = await service.replaceLines(estimator, created.id, [otherLine], first.revision);
+  await assert.rejects(
+    () => service.replaceLines(estimator, created.id, [approvedLine()], first.revision),
+    /estimate_concurrent_modification/,
+  );
+  const current = await service.get(estimator, created.id);
+  assert.equal(current.revision, second.revision);
+  assert.equal(current.lines[0]!.component, 'rear bumper');
+});

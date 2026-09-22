@@ -1,0 +1,13 @@
+{
+  "schema": "elite.independent-adoption-evidence.v1",
+  "repository": "eliteacsllc/ELITE-ESTIMATING-",
+  "commitSha": "REPLACE_WITH_EXACT_HEAD_SHA",
+  "tenantId": "REPLACE_WITH_TENANT_ID",
+  "status": "pending_real_evidence",
+  "controls": {"tenantIsolation": false,"evidenceProvenance": false,"humanApproval": false,"auditLogging": false,"rollback": false,"soc2Evidence": false,"shadowAiGovernance": false},
+  "vendorDecision": {"tenantId":"REPLACE_WITH_TENANT_ID","adoptionState":"blocked","evidenceFingerprint":null},
+  "shadowAiDecision": {"decision":"blocked","shadowAi":true},
+  "highRiskExecution": true,
+  "humanApproval": {"state":"pending","approvedBy":null},
+  "notes": "Template only. Promote to governance-adoption-evidence.json only with current exact-head evidence and required approvals."
+}
