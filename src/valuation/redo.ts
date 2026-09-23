@@ -25,7 +25,7 @@ export async function redoValuationWithWiderSearch(input: ValuationRedoInput) {
     provider: input.provider,
     request: {
       subject: input.subject,
-      postalCode: input.postalCode,
+      ...(input.postalCode !== undefined ? {postalCode:input.postalCode} : {}),
       limit: Math.max(6, input.targetCount ?? 8),
       includeSold: true,
     } as Omit<ComparableSearchRequest, 'radiusMiles'>,
@@ -37,12 +37,12 @@ export async function redoValuationWithWiderSearch(input: ValuationRedoInput) {
   const result = calculateMarketValuation({
     subject: input.subject,
     comparables: search.comparables,
-    bookSources: input.bookSources,
-    policy: input.policy,
-    blendBookWeight: input.blendBookWeight,
+    ...(input.bookSources !== undefined ? {bookSources:input.bookSources} : {}),
+    ...(input.policy !== undefined ? {policy:input.policy} : {}),
+    ...(input.blendBookWeight !== undefined ? {blendBookWeight:input.blendBookWeight} : {}),
   });
   const revision = createValuationRevision({
-    claimId: input.priorRevision.claimId,
+    ...(input.priorRevision.claimId !== undefined ? {claimId:input.priorRevision.claimId} : {}),
     kind: input.priorRevision.kind,
     createdBy: input.requestedBy,
     reason: `redo_wider_market_search:${search.radiusMiles}mi`,
