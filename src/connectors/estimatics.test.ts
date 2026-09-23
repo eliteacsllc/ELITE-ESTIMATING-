@@ -42,8 +42,8 @@ function envelope(overrides: Record<string, unknown> = {}) {
 test('accepts tenant-bound Estimatics envelope and converts provenance', () => {
   const records = estimaticsEnvelopeToProviderRecords(envelope(), 'tenant-a');
   assert.equal(records.length, 1);
-  assert.equal(records[0].provenance.provider, 'elite-estimatics');
-  assert.equal(records[0].provenance.licenseClass, 'public');
+  assert.equal(records[0]?.provenance.provider, 'elite-estimatics');
+  assert.equal(records[0]?.provenance.licenseClass, 'public');
 });
 
 test('rejects cross-tenant and wrong-consumer envelopes', () => {
@@ -53,10 +53,10 @@ test('rejects cross-tenant and wrong-consumer envelopes', () => {
 
 test('rejects non-exportable source classes and incomplete provenance', () => {
   const bad = envelope();
-  bad.items[0].citations[0].license_class = 'licensed_internal';
+  bad.items[0]!.citations[0]!.license_class = 'licensed_internal';
   assert.throws(() => validateEstimaticsEnvelope(bad, 'tenant-a'), /non_exportable/);
   const missing = envelope();
-  missing.items[0].citations[0].retrieved_at = '';
+  missing.items[0]!.citations[0]!.retrieved_at = '';
   assert.throws(() => validateEstimaticsEnvelope(missing, 'tenant-a'), /retrieved_at/);
 });
 

@@ -53,7 +53,7 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
       provider: comparableProviderFromEnv(),
       request: {
         subject,
-        postalCode: typeof body.postalCode === 'string' ? body.postalCode : undefined,
+        ...(typeof body.postalCode === 'string' ? {postalCode:body.postalCode} : {}),
         limit: Number.isFinite(Number(body.limit)) ? Number(body.limit) : policy.targetComparableCount,
         includeSold: body.includeSold !== false,
       },
@@ -71,7 +71,7 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
     const sourceUrl = typeof body.sourceUrl === 'string' ? body.sourceUrl.trim() : '';
     if (!comparableId) throw new Error('capture_comparable_id_required');
     if (!sourceUrl) throw new Error('capture_source_url_required');
-    const result = await evidenceCaptureProviderFromEnv().capture({ comparableId, sourceUrl, retrievedAt: typeof body.retrievedAt === 'string' ? body.retrievedAt : undefined });
+    const result = await evidenceCaptureProviderFromEnv().capture({ comparableId, sourceUrl, ...(typeof body.retrievedAt === 'string' ? {retrievedAt:body.retrievedAt} : {}) });
     send(res, 200, result);
     return true;
   }

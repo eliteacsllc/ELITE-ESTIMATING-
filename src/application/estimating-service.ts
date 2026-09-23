@@ -36,7 +36,7 @@ function recalculate(estimate: Estimate): Estimate {
   const lines = estimate.lines.map((line) => ({ ...line, total: lineTotal(line) }));
   const subtotalMinor = lines.reduce((sum, line) => sum + line.total.amountMinor - (line.tax?.amountMinor ?? 0), 0);
   const taxMinor = lines.reduce((sum, line) => sum + (line.tax?.amountMinor ?? 0), 0);
-  return { ...estimate, lines, subtotal: money(subtotalMinor, estimate.currency), tax: money(taxMinor, estimate.currency), total: money(subtotalMinor + taxMinor, estimate.currency), updatedAt: nextUpdatedAt(estimate.updatedAt) };
+  return { ...estimate, lines, subtotal: money(subtotalMinor, estimate.currency), tax: money(taxMinor, estimate.currency), total: money(subtotalMinor + taxMinor, estimate.currency), revision: estimate.revision + 1, updatedAt: nextUpdatedAt(estimate.updatedAt) };
 }
 
 export class EstimatingService {
@@ -103,7 +103,7 @@ export class EstimatingService {
     assertRepairPlanningChecklist(repairPlan);
     const current = await this.get(principal, id);
     if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
-    const saved = await this.repository.save({ ...current, repairPlan: structuredClone(repairPlan), status: 'review', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
+    const saved = await this.repository.save({ ...current, repairPlan: structuredClone(repairPlan), status: 'review', revision: current.revision + 1, updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
     await this.record(principal, 'estimate.repair_plan_updated', saved);
     await this.emit('estimate.lines_updated', saved, { repairPlanUpdated: true });
     return saved;
@@ -115,7 +115,7 @@ export class EstimatingService {
     if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
     if (current.domainWorkflow) return current;
     const domainWorkflow = createDomainWorkflow(current.asset);
-    const saved = await this.repository.save({ ...current, domainWorkflow, status: 'review', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
+    const saved = await this.repository.save({ ...current, domainWorkflow, status: 'review', revision: current.revision + 1, updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
     await this.record(principal, 'estimate.domain_workflow_initialized', saved, { domain: domainWorkflow.domain });
     await this.emit('estimate.lines_updated', saved, { domainWorkflowInitialized: true, domain: domainWorkflow.domain });
     return saved;
@@ -137,7 +137,7 @@ export class EstimatingService {
       ...(input.note !== undefined ? { note: input.note } : {}),
       ...((input.status === 'complete' || input.status === 'not_applicable') ? { completedBy: principal.userId } : {}),
     });
-    const saved = await this.repository.save({ ...current, domainWorkflow, status: 'review', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
+    const saved = await this.repository.save({ ...current, domainWorkflow, status: 'review', revision: current.revision + 1, updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
     await this.record(principal, 'estimate.domain_workflow_step_updated', saved, { domain: domainWorkflow.domain, stepId: input.stepId, stepStatus: input.status });
     await this.emit('estimate.lines_updated', saved, { domainWorkflowUpdated: true, domain: domainWorkflow.domain, stepId: input.stepId });
     return saved;
@@ -147,7 +147,7 @@ export class EstimatingService {
     authorize(principal, 'estimate:update', principal.tenantId);
     const current = await this.get(principal, id);
     if (current.status === 'approved' || current.status === 'void') throw new Error('estimate_locked');
-    const saved = await this.repository.save({ ...current, domainWorkflow: structuredClone(domainWorkflow), status: 'review', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
+    const saved = await this.repository.save({ ...current, domainWorkflow: structuredClone(domainWorkflow), status: 'review', revision: current.revision + 1, updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
     await this.record(principal, 'estimate.domain_workflow_updated', saved, { domain: domainWorkflow.domain });
     await this.emit('estimate.lines_updated', saved, { domainWorkflowUpdated: true, domain: domainWorkflow.domain });
     return saved;
@@ -179,7 +179,7 @@ export class EstimatingService {
   async void(principal: Principal, id: string): Promise<Estimate> {
     authorize(principal, 'estimate:void', principal.tenantId);
     const current = await this.get(principal, id);
-    const saved = await this.repository.save({ ...current, status: 'void', updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
+    const saved = await this.repository.save({ ...current, status: 'void', revision: current.revision + 1, updatedAt: nextUpdatedAt(current.updatedAt) }, current.updatedAt);
     await this.record(principal, 'estimate.voided', saved);
     await this.emit('estimate.voided', saved);
     return saved;
