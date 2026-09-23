@@ -375,7 +375,7 @@ const server = createServer(async (req, res) => {
       }
       if(parts.length===6&&parts[5]==='link-estimate'&&req.method==='POST'){
         authorize(actor,'estimate:update',actor.tenantId);
-        const eventId=parts[4]; const body=await json(req); const estimateId=String(body.estimateId??'').trim();
+        const eventId=parts[4]!; const body=await json(req); const estimateId=String(body.estimateId??'').trim();
         if(!estimateId) throw new Error('estimate_id_required');
         const estimate=await service.get(actor,estimateId);
         const queued=(await claimsInspectionInbox.list(actor.tenantId,'queued',200)).find(row=>row.eventId===eventId);
