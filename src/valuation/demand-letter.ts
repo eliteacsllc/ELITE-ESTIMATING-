@@ -18,7 +18,7 @@ const money=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency
 export function createDemandLetter(input:DemandLetterInput):string{
   if(!input.valuation) throw new Error('valuation_revision_required');
   const result=input.valuation.result as Record<string,unknown>;
-  const indicated=Number(result.indicatedValue ?? result.diminishedValue ?? 0);
+  const indicated=Number(result.indicatedValue ?? result.acv ?? result.diminishedValue ?? 0);
   if(!Number.isFinite(indicated)||indicated<=0) throw new Error('valid_valuation_required');
   const requested=Number(input.requestedAmount ?? indicated);
   const days=Math.max(1,Math.min(60,Number(input.responseDeadlineDays ?? 14)));

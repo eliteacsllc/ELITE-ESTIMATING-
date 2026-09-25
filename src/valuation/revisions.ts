@@ -1,9 +1,10 @@
 import type { ValuationResult } from './market-valuation.js';
 import type { DiminishedValueResult } from './diminished-value.js';
+import type { AcvResult } from './acv-engine.js';
 
-export type ValuationRevisionKind = 'market_value' | 'diminished_value';
+export type ValuationRevisionKind = 'market_value' | 'acv' | 'diminished_value';
 
-export type ValuationRevision<T = ValuationResult | DiminishedValueResult> = {
+export type ValuationRevision<T = ValuationResult | AcvResult | DiminishedValueResult> = {
   id: string;
   claimId?: string;
   kind: ValuationRevisionKind;
@@ -18,7 +19,13 @@ export type ValuationRevision<T = ValuationResult | DiminishedValueResult> = {
   approval?: { approvedBy: string; approvedAt: string; note?: string };
 };
 
-export function createValuationRevision<T extends ValuationResult | DiminishedValueResult>(input: {
+function marketResultOf(result:ValuationResult|AcvResult|DiminishedValueResult):ValuationResult {
+  if('valuation' in result) return result.valuation;
+  if('preLoss' in result) return result.preLoss;
+  return result;
+}
+
+export function createValuationRevision<T extends ValuationResult | AcvResult | DiminishedValueResult>(input: {
   claimId?: string;
   kind: ValuationRevisionKind;
   createdBy: string;
@@ -26,12 +33,7 @@ export function createValuationRevision<T extends ValuationResult | DiminishedVa
   result: T;
   supersedes?: ValuationRevision;
 }): ValuationRevision<T> {
-  const selectedComparableIds = 'selectedComparableIds' in input.result
-    ? input.result.selectedComparableIds
-    : input.result.preLoss.selectedComparableIds;
-  const evidenceSnapshot = 'evidence' in input.result
-    ? input.result.evidence
-    : input.result.preLoss.evidence;
+  const market=marketResultOf(input.result);
   return {
     id: `valrev_${crypto.randomUUID()}`,
     claimId: input.claimId,
@@ -40,9 +42,9 @@ export function createValuationRevision<T extends ValuationResult | DiminishedVa
     createdBy: input.createdBy,
     reason: input.reason.trim() || 'valuation_updated',
     supersedesId: input.supersedes?.id,
-    selectedComparableIds: [...selectedComparableIds],
+    selectedComparableIds: [...market.selectedComparableIds],
     result: structuredClone(input.result),
-    evidenceSnapshot: structuredClone(evidenceSnapshot),
+    evidenceSnapshot: structuredClone(market.evidence),
     approved: false,
   };
 }
