@@ -1,6 +1,8 @@
 import type { ComparableVehicle, SubjectVehicle, AdjustmentPolicy, MoneySource, ValuationResult } from './market-valuation.js';
 import { calculateMarketValuation } from './market-valuation.js';
 
+export const DV_METHOD_VERSION = 'elite.dv.market-supported.v1.0.0' as const;
+
 export type DamageAdjustment = {
   label: string;
   amount: number;
@@ -8,16 +10,34 @@ export type DamageAdjustment = {
   evidenceId?: string;
 };
 
+export type DiminishedValueReference = {
+  name:'17c_reference';
+  amount:number;
+  referenceOnly:true;
+};
+
 export type DiminishedValueResult = {
+  methodVersion: typeof DV_METHOD_VERSION;
+  methodology:'market_supported';
   preLoss: ValuationResult;
+  modeledPostLossValue:number;
   postLossIndicatedValue: number;
   diminishedValue: number;
   damageAdjustments: DamageAdjustment[];
+  references:DiminishedValueReference[];
   confidence: number;
   reviewRequired: boolean;
+  reviewReasons:string[];
 };
 
 const round=(n:number)=>Math.round((Number.isFinite(n)?n:0)*100)/100;
+
+export function calculate17cReference(input:{preLossValue:number;damageMultiplier?:number;mileageMultiplier?:number}):DiminishedValueReference {
+  const base=Math.max(0,Number(input.preLossValue)||0)*0.10;
+  const damage=Math.max(0,Math.min(1,Number(input.damageMultiplier??1)));
+  const mileage=Math.max(0,Math.min(1,Number(input.mileageMultiplier??1)));
+  return {name:'17c_reference',amount:round(base*damage*mileage),referenceOnly:true};
+}
 
 export function calculateDiminishedValue(input:{
   subject:SubjectVehicle;
@@ -28,6 +48,9 @@ export function calculateDiminishedValue(input:{
   blendBookWeight?:number;
   damageAdjustments:DamageAdjustment[];
   postLossMarketEvidence?:number;
+  include17cReference?:boolean;
+  referenceDamageMultiplier?:number;
+  referenceMileageMultiplier?:number;
 }):DiminishedValueResult{
   const preLoss=calculateMarketValuation({
     subject:input.subject,
@@ -39,21 +62,36 @@ export function calculateDiminishedValue(input:{
   });
   const evidencePostLoss=Number(input.postLossMarketEvidence);
   const totalDamageAdjustment=input.damageAdjustments.reduce((sum,a)=>sum+Math.max(0,Number(a.amount)||0),0);
-  const modeledPostLoss=round(Math.max(0,preLoss.indicatedValue-totalDamageAdjustment));
-  const postLossIndicatedValue=Number.isFinite(evidencePostLoss)&&evidencePostLoss>0
-    ? round((modeledPostLoss+evidencePostLoss)/2)
-    : modeledPostLoss;
+  const modeledPostLossValue=round(Math.max(0,preLoss.indicatedValue-totalDamageAdjustment));
+  const hasPostLossEvidence=Number.isFinite(evidencePostLoss)&&evidencePostLoss>0;
+  const postLossIndicatedValue=hasPostLossEvidence
+    ? round((modeledPostLossValue+evidencePostLoss)/2)
+    : modeledPostLossValue;
   const diminishedValue=round(Math.max(0,preLoss.indicatedValue-postLossIndicatedValue));
   const adjustmentEvidenceRatio=input.damageAdjustments.length
     ? input.damageAdjustments.filter(a=>a.source||a.evidenceId).length/input.damageAdjustments.length
     : 0;
-  const confidence=round(Math.max(0,Math.min(100,preLoss.confidence*0.7+adjustmentEvidenceRatio*20+(Number.isFinite(evidencePostLoss)&&evidencePostLoss>0?10:0))));
+  const confidence=round(Math.max(0,Math.min(100,preLoss.confidence*0.7+adjustmentEvidenceRatio*20+(hasPostLossEvidence?10:0))));
+  const reviewReasons:string[]=[];
+  if(confidence<75) reviewReasons.push('confidence_below_75');
+  if(diminishedValue<=0) reviewReasons.push('no_supported_diminished_value');
+  if(input.damageAdjustments.length===0) reviewReasons.push('damage_adjustments_required');
+  if(adjustmentEvidenceRatio<0.75) reviewReasons.push('damage_adjustment_evidence_incomplete');
+  if(!hasPostLossEvidence) reviewReasons.push('post_loss_market_evidence_missing');
+  const references=input.include17cReference
+    ? [calculate17cReference({preLossValue:preLoss.indicatedValue,damageMultiplier:input.referenceDamageMultiplier,mileageMultiplier:input.referenceMileageMultiplier})]
+    : [];
   return {
+    methodVersion:DV_METHOD_VERSION,
+    methodology:'market_supported',
     preLoss,
+    modeledPostLossValue,
     postLossIndicatedValue,
     diminishedValue,
     damageAdjustments:input.damageAdjustments,
+    references,
     confidence,
-    reviewRequired:confidence<75||diminishedValue<=0,
+    reviewRequired:reviewReasons.length>0,
+    reviewReasons,
   };
 }
