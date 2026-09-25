@@ -116,3 +116,7 @@ export * from './integrations/claims-management-inbound.js';
 export * from './integrations/claims-handoff-context.js';
 
 export * from './valuation/market-evidence.js';
+
+export * from './valuation/acv-engine.js';
+export * from './valuation/jurisdiction.js';
+export * from './valuation/release-gate.js';
