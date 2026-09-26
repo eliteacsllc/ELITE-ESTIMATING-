@@ -1,5 +1,6 @@
 import type { ComparableVehicle, SubjectVehicle, AdjustmentPolicy, MoneySource, ValuationResult } from './market-valuation.js';
 import { calculateMarketValuation } from './market-valuation.js';
+import { auditConditionState, conditionValueDeltas, type ConditionStateRecord, type ValuationConditionState } from './condition-states.js';
 
 export const DV_METHOD_VERSION = 'elite.dv.market-supported.v1.0.0' as const;
 
@@ -93,5 +94,62 @@ export function calculateDiminishedValue(input:{
     confidence,
     reviewRequired:reviewReasons.length>0,
     reviewReasons,
+  };
+}
+
+
+export type DiminishedValueFromConditionStatesResult = DiminishedValueResult & {
+  conditionValues: Partial<Record<ValuationConditionState, number>>;
+  conditionDeltas: ReturnType<typeof conditionValueDeltas>;
+  stateAudits: ReturnType<typeof auditConditionState>[];
+};
+
+export function calculateDiminishedValueFromConditionStates(input:{
+  subject:SubjectVehicle;
+  comparables:ComparableVehicle[];
+  selectedComparableIds?:string[];
+  bookSources?:MoneySource[];
+  policy?:AdjustmentPolicy;
+  blendBookWeight?:number;
+  damageAdjustments:DamageAdjustment[];
+  conditionRecords:ConditionStateRecord[];
+  conditionValues:Partial<Record<ValuationConditionState,number>>;
+  include17cReference?:boolean;
+  referenceDamageMultiplier?:number;
+  referenceMileageMultiplier?:number;
+}):DiminishedValueFromConditionStatesResult {
+  const preLossValue=Number(input.conditionValues.pre_loss_undamaged);
+  const postRepairValue=Number(input.conditionValues.post_repair_as_is);
+  if(!Number.isFinite(preLossValue)||preLossValue<=0) throw new Error('pre_loss_undamaged_value_required');
+  if(!Number.isFinite(postRepairValue)||postRepairValue<=0) throw new Error('post_repair_as_is_value_required');
+
+  const result=calculateDiminishedValue({
+    subject:input.subject,
+    comparables:input.comparables,
+    selectedComparableIds:input.selectedComparableIds,
+    bookSources:input.bookSources,
+    policy:input.policy,
+    blendBookWeight:input.blendBookWeight,
+    damageAdjustments:input.damageAdjustments,
+    postLossMarketEvidence:postRepairValue,
+    include17cReference:input.include17cReference,
+    referenceDamageMultiplier:input.referenceDamageMultiplier,
+    referenceMileageMultiplier:input.referenceMileageMultiplier,
+  });
+
+  const stateAudits=input.conditionRecords.map(auditConditionState);
+  const conditionDeltas=conditionValueDeltas(input.conditionValues);
+  const additionalReasons:string[]=[];
+  if(!input.conditionRecords.some(r=>r.state==='pre_loss_undamaged')) additionalReasons.push('pre_loss_condition_record_missing');
+  if(!input.conditionRecords.some(r=>r.state==='post_repair_as_is')) additionalReasons.push('post_repair_condition_record_missing');
+  if(stateAudits.some(a=>!a.complete)) additionalReasons.push('condition_state_audit_incomplete');
+
+  return {
+    ...result,
+    reviewRequired:result.reviewRequired||additionalReasons.length>0,
+    reviewReasons:[...new Set([...result.reviewReasons,...additionalReasons])],
+    conditionValues:input.conditionValues,
+    conditionDeltas,
+    stateAudits,
   };
 }

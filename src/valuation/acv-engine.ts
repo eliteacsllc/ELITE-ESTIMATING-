@@ -1,5 +1,6 @@
 import { calculateMarketValuation, type AdjustmentPolicy, type ComparableVehicle, type MoneySource, type SubjectVehicle, type ValuationResult } from './market-valuation.js';
 import type { VehicleConditionReview } from '../automotive/vehicle-condition.js';
+import { auditConditionState, conditionValueDeltas, validateConditionSequence, type ConditionStateRecord, type ValuationConditionState } from './condition-states.js';
 
 export const ACV_METHOD_VERSION = 'elite.acv.v1.0.0' as const;
 
@@ -77,5 +78,74 @@ export function calculateAcv(input:{
     confidence,
     reviewRequired:reviewReasons.length>0,
     reviewReasons,
+  };
+}
+
+
+export type AcvConditionStateInput = {
+  state: ValuationConditionState;
+  record: ConditionStateRecord;
+  subject: SubjectVehicle;
+  comparables: ComparableVehicle[];
+  selectedComparableIds?: string[];
+  bookSources?: MoneySource[];
+  policy?: AdjustmentPolicy;
+  blendBookWeight?: number;
+  condition?: VehicleConditionReview[];
+  minimumComparableCount?: number;
+  minimumConfidence?: number;
+};
+
+export type AcvAcrossConditionsResult = {
+  methodVersion: typeof ACV_METHOD_VERSION;
+  states: Partial<Record<ValuationConditionState, AcvResult>>;
+  stateAudits: ReturnType<typeof auditConditionState>[];
+  values: Partial<Record<ValuationConditionState, number>>;
+  deltas: ReturnType<typeof conditionValueDeltas>;
+  confidence: number;
+  reviewRequired: boolean;
+  reviewReasons: string[];
+};
+
+export function calculateAcvAcrossConditions(input:{states:AcvConditionStateInput[]}):AcvAcrossConditionsResult {
+  const stateResults: Partial<Record<ValuationConditionState, AcvResult>> = {};
+  const values: Partial<Record<ValuationConditionState, number>> = {};
+  const records = input.states.map(s => s.record);
+  const reviewReasons = validateConditionSequence(records);
+
+  for (const state of input.states) {
+    if (state.record.state !== state.state) {
+      reviewReasons.push(`${state.state}:record_state_mismatch`);
+      continue;
+    }
+    const result = calculateAcv({
+      subject: state.subject,
+      comparables: state.comparables,
+      selectedComparableIds: state.selectedComparableIds,
+      bookSources: state.bookSources,
+      policy: state.policy,
+      blendBookWeight: state.blendBookWeight,
+      condition: state.condition,
+      minimumComparableCount: state.minimumComparableCount,
+      minimumConfidence: state.minimumConfidence,
+    });
+    stateResults[state.state] = result;
+    values[state.state] = result.acv;
+    for (const reason of result.reviewReasons) reviewReasons.push(`${state.state}:${reason}`);
+  }
+
+  const stateAudits = records.map(auditConditionState);
+  const confidences = Object.values(stateResults).map(r => r?.confidence).filter((v):v is number => typeof v === 'number');
+  const confidence = round(confidences.length ? confidences.reduce((a,b)=>a+b,0)/confidences.length : 0);
+  const deltas = conditionValueDeltas(values);
+  return {
+    methodVersion: ACV_METHOD_VERSION,
+    states: stateResults,
+    stateAudits,
+    values,
+    deltas,
+    confidence,
+    reviewRequired: reviewReasons.length > 0,
+    reviewReasons: [...new Set(reviewReasons)],
   };
 }
