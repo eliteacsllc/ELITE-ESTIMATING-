@@ -99,6 +99,7 @@ export * from './launch/readiness.js';
 export * from "./automotive/vehicle-condition.js";
 
 export * from './valuation/market-valuation.js';
+export * from './valuation/condition-states.js';
 export * from './valuation/diminished-value.js';
 export * from './valuation/report-packet.js';
 export * from './valuation/report-html.js';
