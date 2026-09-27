@@ -6,6 +6,7 @@ import {
   type FabricDecision,
   type FabricExecutionPlan,
 } from './fabric.js';
+import { LocalEstimatingAgentGovernance, type EstimatingAgentGovernanceEnforcer } from './governance.js';
 
 export type AgentExecutionInput = {
   payload: unknown;
@@ -81,6 +82,7 @@ export class AgentMeshRuntime {
   constructor(
     private readonly registry: AgentExecutorRegistry,
     private readonly onEvent: (event: AgentMeshRuntimeEvent) => void = () => undefined,
+    private readonly governance: EstimatingAgentGovernanceEnforcer = new LocalEstimatingAgentGovernance(),
   ) {}
 
   async execute(plan: FabricExecutionPlan, payload: unknown, nowMs = Date.now()): Promise<AgentMeshExecutionResult> {
@@ -150,6 +152,39 @@ export class AgentMeshRuntime {
         };
         emit({ type: 'failed', agentId: executor.agentId, detail: 'agent_executor_not_allowed_by_ticket' });
         return denied;
+      }
+
+      let governanceDecision;
+      try {
+        governanceDecision = await this.governance.evaluate({
+          tenantId: plan.ticket.tenantId,
+          estimateId: plan.ticket.estimateId,
+          revision: plan.ticket.revision,
+          agentId: executor.agentId,
+          superAgentId: plan.superAgent.id,
+          feature: plan.feature,
+          criticality: plan.criticality,
+          ticketChecksum: plan.ticket.checksum,
+        });
+      } catch {
+        governanceDecision = { decision: 'deny' as const, reason: 'agent_governance_unavailable' };
+      }
+      if (governanceDecision.decision !== 'allow') {
+        const governedDenied: FabricCandidate = {
+          agentId: executor.agentId,
+          implementationFamily: executor.implementationFamily,
+          outputKey: '',
+          confidence: 0,
+          evidenceRefs: [],
+          sourceFamilies: executor.sourceFamilies,
+          latencyMs: Date.now() - started,
+          ticketChecksum: plan.ticket.checksum,
+          error: governanceDecision.decision === 'require_approval'
+            ? 'agent_governance_approval_required'
+            : governanceDecision.reason,
+        };
+        emit({ type: 'failed', agentId: executor.agentId, detail: governedDenied.error });
+        return governedDenied;
       }
       try {
         const output = await executor.execute({
