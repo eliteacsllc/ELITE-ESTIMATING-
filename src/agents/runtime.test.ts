@@ -120,3 +120,83 @@ test('expired execution tickets fail closed before launching an executor',async(
   registry.register(executor(plan.primary.agentId,plan.primary.implementationFamily,['market'],'x'));
   await assert.rejects(()=>new AgentMeshRuntime(registry).execute(plan,{},Date.parse(plan.ticket.expiresAt)+1),/fabric_ticket_expired/);
 });
+
+
+test('agent runtime fails closed before executor when governance denies', async () => {
+  const registry = new AgentExecutorRegistry();
+  let calls = 0;
+  registry.register({
+    agentId: 'deny-test-agent',
+    implementationFamily: 'test',
+    sourceFamilies: ['test'],
+    async execute() {
+      calls += 1;
+      return { outputKey: 'should-not-run', confidence: 1, evidenceRefs: ['e1'] };
+    },
+  });
+
+  const plan = buildFabricExecutionPlan({
+    tenantId: 'tenant-a',
+    estimateId: 'est-1',
+    revision: 1,
+    feature: 'damage',
+    criticality: 'standard',
+    superAgent: { id: 'damage-intelligence', name: 'Damage Intelligence' },
+    primary: { agentId: 'deny-test-agent', implementationFamily: 'test', sourceFamilies: ['test'] },
+    shadows: [],
+    minimumIndependentImplementations: 1,
+    hardDeadlineMs: 1000,
+    hedgeAfterMs: 10,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+
+  const runtime = new AgentMeshRuntime(registry, () => undefined, {
+    async evaluate() { return { decision: 'deny', reason: 'tenant_governance_frozen' }; },
+  });
+  const result = await runtime.execute(plan, {});
+  assert.equal(calls, 0);
+  assert.equal(result.candidates[0]?.error, 'tenant_governance_frozen');
+});
+
+test('governance allow occurs before estimating executor', async () => {
+  const registry = new AgentExecutorRegistry();
+  let governanceCalls = 0;
+  let executorCalls = 0;
+  registry.register({
+    agentId: 'allow-test-agent',
+    implementationFamily: 'test',
+    sourceFamilies: ['test'],
+    async execute() {
+      executorCalls += 1;
+      assert.equal(governanceCalls, 1);
+      return { outputKey: 'ok', confidence: .95, evidenceRefs: ['e1'] };
+    },
+  });
+
+  const plan = buildFabricExecutionPlan({
+    tenantId: 'tenant-a',
+    estimateId: 'est-2',
+    revision: 1,
+    feature: 'damage',
+    criticality: 'standard',
+    superAgent: { id: 'damage-intelligence', name: 'Damage Intelligence' },
+    primary: { agentId: 'allow-test-agent', implementationFamily: 'test', sourceFamilies: ['test'] },
+    shadows: [],
+    minimumIndependentImplementations: 1,
+    hardDeadlineMs: 1000,
+    hedgeAfterMs: 10,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+
+  const runtime = new AgentMeshRuntime(registry, () => undefined, {
+    async evaluate(input) {
+      governanceCalls += 1;
+      assert.equal(input.tenantId, 'tenant-a');
+      assert.equal(input.agentId, 'allow-test-agent');
+      return { decision: 'allow', reason: 'governance_policy_satisfied' };
+    },
+  });
+  const result = await runtime.execute(plan, {});
+  assert.equal(executorCalls, 1);
+  assert.equal(result.candidates[0]?.outputKey, 'ok');
+});
