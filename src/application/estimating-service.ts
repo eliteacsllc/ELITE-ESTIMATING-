@@ -17,6 +17,7 @@ import type { AuditSink } from '../audit/audit.js';
 import { auditEvent, NoopAuditSink } from '../audit/audit.js';
 import type { LifecycleSink, LifecycleTopic } from '../integrations/outbox.js';
 import { lifecycleEvent, NoopLifecycleSink } from '../integrations/outbox.js';
+import type { IntelligenceFabricClient } from '../intelligence/intelligence-fabric-client.js';
 
 export type CreateEstimateInput = {
   id?: string;
@@ -45,6 +46,7 @@ export class EstimatingService {
     private readonly carrierRules: CarrierRule[] = [],
     private readonly audit: AuditSink = new NoopAuditSink(),
     private readonly lifecycle: LifecycleSink = new NoopLifecycleSink(),
+    private readonly intelligence?: Pick<IntelligenceFabricClient, 'configured' | 'preflight'>,
   ) {}
 
   private async record(principal: Principal, action: string, estimate: Estimate, metadata: Record<string, unknown> = {}): Promise<void> {
@@ -169,6 +171,23 @@ export class EstimatingService {
     if (current.domainWorkflow) domainWorkflowWarningCount = assertDomainWorkflowComplete(current.domainWorkflow).warnings.length;
     const findings = evaluateCarrierRules(current, this.carrierRules);
     assertNoBlockingFindings(findings);
+    if (this.intelligence?.configured) {
+      const decision = await this.intelligence.preflight({
+        subjectId: current.id,
+        domain: 'estimating',
+        capability: 'estimate.release',
+        actorId: principal.userId,
+        input: {
+          estimateId: current.id,
+          claimId: current.claimId ?? null,
+          totalMinor: current.total.amountMinor,
+          currency: current.currency,
+          lineCount: current.lines.length,
+        },
+        requiresHumanApproval: true,
+      });
+      if (!decision.allowed || !decision.supported) throw new Error(`intelligence_fabric_preflight_denied:${decision.reasons.join('|')}`);
+    }
     const saved = await this.repository.save({ ...recalculate(current), status: 'approved' }, current.updatedAt);
     await this.record(principal, 'estimate.approved', saved, { carrierFindingCount: findings.length, motorGuideFindingCount: motorFindings.length, repairPlanFindingCount, domainWorkflowWarningCount });
     await this.emit('estimate.approved', saved, { totalMinor: saved.total.amountMinor, currency: saved.currency });
