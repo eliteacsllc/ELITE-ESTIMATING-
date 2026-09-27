@@ -33,9 +33,13 @@
     "desktop:build": "npm run build:client && npx --yes @tauri-apps/cli@2.11.4 build",
     "portfolio:gate": "node scripts/portfolio-gate.mjs",
     "experience:verify": "node .elite/validate-seamless-experience.mjs",
-    "verify": "npm run experience:verify && npm run runtime:smoke && npm run portfolio:gate && npm run typecheck && npm test && npm run build:client"
+    "verify": "npm run experience:verify && npm run runtime:smoke && npm run portfolio:gate && npm run typecheck && npm test && npm run build:client",
+    "release:authorize": "node scripts/validate-launch-authorization.mjs",
+    "launch:final:authorized": "npm run release:authorize && npm run launch:final --"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1115.0",
     "@aws-sdk/s3-request-presigner": "3.1115.0",
