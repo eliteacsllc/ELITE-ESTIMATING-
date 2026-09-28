@@ -8,6 +8,10 @@ function apiUrl(path: string): string {
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('Missing #app root');
+const launchParams = new URLSearchParams(location.search);
+const claimContext = launchParams.get('claim')?.trim() || '';
+if (claimContext) sessionStorage.setItem('eliteEstimatingClaimContext', claimContext);
+const preservedClaimContext = claimContext || sessionStorage.getItem('eliteEstimatingClaimContext') || '';
 
 const assetOptions = [
   ['passenger_vehicle','Passenger vehicle'],['commercial_vehicle','Commercial vehicle'],['tractor_trailer','Tractor-trailer'],
@@ -44,6 +48,7 @@ app.innerHTML = `
       <p class="eyebrow">Elite Estimating OS</p>
       <h1>Build a complete estimate</h1>
       <p class="lede">Choose the asset, add the evidence you have, and move through the domain-specific estimating and review workflow.</p>
+      ${preservedClaimContext ? '<div class="field-status">Claim-linked estimating session</div>' : ''}
     </header>
 
     <section class="progress" aria-label="Estimate setup progress">
