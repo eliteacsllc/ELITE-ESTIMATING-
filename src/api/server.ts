@@ -349,7 +349,7 @@ const server = createServer(async (req, res) => {
         claimId: canonical.claimId || canonical.jobId!,
         assignmentId: String(payload.assignmentId||canonical.jobId||''),
         estimateId: created.estimate.id,
-        inspectionType: String((payload.asset as Record<string,unknown>)?.domain||'automotive'),
+        inspectionType: String((payload.asset as Record<string,unknown>)?.domain||'automotive') as never,
         evidenceIds: Array.isArray(payload.evidenceIds)?payload.evidenceIds:[],
         findings: Array.isArray(payload.findings)?payload.findings:[],
         correlationId: canonical.correlationId,
