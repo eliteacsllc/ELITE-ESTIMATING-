@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EstimatingService } from '../application/estimating-service.js';
 import { IdempotentEstimateCreationService } from '../application/idempotent-estimate-create.js';
@@ -43,7 +43,6 @@ import { claimsEventIdempotencyKey, parseClaimsEstimatingReady, verifyClaimsMana
 import { InMemoryClaimsHandoffContextRepository, PostgresClaimsHandoffContextRepository, type ClaimsHandoffContextRepository } from '../integrations/claims-handoff-context.js';
 import { MemoryClaimsInspectionInbox, PostgresClaimsInspectionInbox, parseClaimsInspectionEvent, verifyClaimsWebhook } from '../integrations/claims-inspection.js';
 import { claimsPlatformClientFromEnv, normalizeValuationEvidence } from '../integrations/claims-platform-client.js';
-import { createHash } from 'node:crypto';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
