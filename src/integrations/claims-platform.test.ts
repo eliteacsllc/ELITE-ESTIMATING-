@@ -13,9 +13,14 @@ test("validates valuation provenance and immutable snapshot handoff",()=>{
   assert.equal(validateClaimEstimateSnapshot(snapshot).snapshotRef,"sha256:abc");
   const event=buildEstimateQaHandoff(snapshot);
   assert.equal(event.eventType,"estimate.created");
+  assert.equal(event.eventId,"estimating:est1:revision:1:created");
+  assert.equal(event.occurredAt,"2026-09-28T00:00:00Z");
   assert.equal(event.data.revision,1);
 });
 
 test("rejects missing provenance",()=>{
   assert.throws(()=>validateClaimEstimateSnapshot({...snapshot,valuationEvidence:[{...snapshot.valuationEvidence[0],provider:""}]}),/provenance/);
 });
+
+
+test("rejects invalid submission time",()=>{ assert.throws(()=>validateClaimEstimateSnapshot({...snapshot,submittedAt:"not-a-date"}),/submission_invalid/); });
