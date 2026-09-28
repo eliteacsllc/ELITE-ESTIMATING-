@@ -1,0 +1,101 @@
+name: Self-hosted exact-head verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact commit SHA to certify; blank uses the dispatch ref SHA"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SHA: ${{ inputs.target_sha || github.sha }}
+
+jobs:
+  verify:
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 90
+    steps:
+      - name: Initialize isolated workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          root="${RUNNER_TEMP}/${repo_name}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "VERIFY_ROOT=$root" >> "$GITHUB_ENV"
+
+      - name: Validate target SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${TARGET_SHA}" =~ ^[0-9a-fA-F]{7,40}$ ]]
+
+      - name: Checkout exact SHA without marketplace checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf -- "$VERIFY_ROOT"
+          mkdir -p "$VERIFY_ROOT"
+          cd "$VERIFY_ROOT"
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -c http.extraHeader="AUTHORIZATION: bearer ${GH_TOKEN}" fetch --quiet --depth=1 origin "${TARGET_SHA}"
+          git checkout --quiet --detach FETCH_HEAD
+          resolved="$(git rev-parse HEAD)"
+          requested="$(printf '%s' "${TARGET_SHA}" | tr '[:upper:]' '[:lower:]')"
+          case "$resolved" in "$requested"*) ;; *) echo "SHA mismatch"; exit 1 ;; esac
+          echo "TARGET_SHA=$resolved" >> "$GITHUB_ENV"
+
+      - name: Verify runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$VERIFY_ROOT"
+          node --version
+          npm --version
+          git --version
+
+      - name: Run repository verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$VERIFY_ROOT"
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run verify
+
+      - name: Write exact-head evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$VERIFY_ROOT"
+          mkdir -p release-evidence
+          cat > "release-evidence/intelligence-fabric-${TARGET_SHA}.json" <<JSON
+          {
+            "contract": "elite.intelligence-fabric.exact-head.v1",
+            "repository": "${GITHUB_REPOSITORY}",
+            "sha": "${TARGET_SHA}",
+            "run_id": "${GITHUB_RUN_ID}",
+            "run_attempt": "${GITHUB_RUN_ATTEMPT}",
+            "runner": "self-hosted-linux-x64",
+            "result": "passed"
+          }
+          JSON
+          cat "release-evidence/intelligence-fabric-${TARGET_SHA}.json"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: intelligence-fabric-${{ env.TARGET_SHA }}
+          path: ${{ env.VERIFY_ROOT }}/release-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: rm -rf -- "${VERIFY_ROOT:-/nonexistent}"
