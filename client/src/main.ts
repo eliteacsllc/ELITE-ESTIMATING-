@@ -12,6 +12,16 @@ const launchParams = new URLSearchParams(location.search);
 const claimContext = launchParams.get('claim')?.trim() || '';
 if (claimContext) sessionStorage.setItem('eliteEstimatingClaimContext', claimContext);
 const preservedClaimContext = claimContext || sessionStorage.getItem('eliteEstimatingClaimContext') || '';
+function safeReturnUrl(value:string|null):string{
+  try{
+    const u=new URL(value||'');
+    const h=u.hostname.toLowerCase();
+    if(u.protocol==='https:'&&(h==='eliteacsllc.com'||h.endsWith('.eliteacsllc.com')))return u.toString();
+    if((h==='localhost'||h==='127.0.0.1')&&(u.protocol==='http:'||u.protocol==='https:'))return u.toString();
+  }catch{}
+  return '';
+}
+const returnToClaims=safeReturnUrl(launchParams.get('return'));
 
 const assetOptions = [
   ['passenger_vehicle','Passenger vehicle'],['commercial_vehicle','Commercial vehicle'],['tractor_trailer','Tractor-trailer'],
@@ -49,6 +59,7 @@ app.innerHTML = `
       <h1>Build a complete estimate</h1>
       <p class="lede">Choose the asset, add the evidence you have, and move through the domain-specific estimating and review workflow.</p>
       ${preservedClaimContext ? '<div class="field-status">Claim-linked estimating session</div>' : ''}
+      ${returnToClaims ? `<a class="elite-action elite-action--secondary" href="${returnToClaims}" rel="noopener" style="display:inline-flex;margin-top:10px;text-decoration:none">← Back to Claims</a>` : ''}
     </header>
 
     <section class="progress" aria-label="Estimate setup progress">
