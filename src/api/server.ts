@@ -42,6 +42,7 @@ import { supplementManagerCss, supplementManagerJs } from '../web/supplement-man
 import { claimsEventIdempotencyKey, parseClaimsEstimatingReady, verifyClaimsManagementSignature } from '../integrations/claims-management-inbound.js';
 import { InMemoryClaimsHandoffContextRepository, PostgresClaimsHandoffContextRepository, type ClaimsHandoffContextRepository } from '../integrations/claims-handoff-context.js';
 import { MemoryClaimsInspectionInbox, PostgresClaimsInspectionInbox, parseClaimsInspectionEvent, verifyClaimsWebhook } from '../integrations/claims-inspection.js';
+import { canonicalEstimateResult, validateCanonicalClaimsEstimateRequest, type CanonicalClaimsEstimateRequest } from '../integrations/canonical-claims-inbound.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
@@ -322,6 +323,42 @@ const server = createServer(async (req, res) => {
       });
       return send(res, created.replayed ? 200 : 201, { accepted: true, replayed: created.replayed, estimateId: context.estimateId, inspectionId: context.inspectionId, evidenceRefs: context.evidenceIds });
     }
+    if (req.method === 'POST' && req.url === '/api/integrations/claims') {
+      const secret=process.env.ELITE_CLAIMS_WEBHOOK_SECRET?.trim()||'';
+      if(secret.length<32) return send(res,503,{error:'claims_webhook_secret_unavailable'});
+      const raw=await rawBody(req);
+      const signature=singleHeader(req.headers['x-elite-signature'])||'';
+      if(!verifyClaimsWebhook(secret,raw,signature)) return send(res,401,{error:'invalid_signature'});
+      let canonical: CanonicalClaimsEstimateRequest;
+      try { canonical=JSON.parse(raw) as CanonicalClaimsEstimateRequest; } catch { return send(res,400,{error:'invalid_json'}); }
+      const errors=validateCanonicalClaimsEstimateRequest(canonical);
+      if(errors.length) return send(res,422,{error:'invalid_claims_envelope',errors});
+      const actor: Principal={userId:'claims-management',tenantId:canonical.tenantId,roles:['estimator']};
+      const payload=canonical.payload;
+      const created=await idempotentCreateService.create(actor,canonical.idempotencyKey,{
+        claimId: canonical.claimId || canonical.jobId!,
+        asset: payload.asset as never,
+        locale: payload.locale || 'en-US',
+        currency: payload.currency || 'USD',
+        jurisdiction: payload.jurisdiction || String((payload.asset as Record<string,unknown>)?.jurisdiction || 'US')
+      });
+      const inspectionId=String(payload.inspectionId||canonical.jobId||canonical.claimId||created.estimate.id);
+      await claimsHandoffRepository.save({
+        tenantId: canonical.tenantId,
+        inspectionId,
+        claimId: canonical.claimId || canonical.jobId!,
+        assignmentId: String(payload.assignmentId||canonical.jobId||''),
+        estimateId: created.estimate.id,
+        inspectionType: String((payload.asset as Record<string,unknown>)?.domain||'automotive'),
+        evidenceIds: Array.isArray(payload.evidenceIds)?payload.evidenceIds:[],
+        findings: Array.isArray(payload.findings)?payload.findings:[],
+        correlationId: canonical.correlationId,
+        sourceEventId: canonical.idempotencyKey,
+        receivedAt: new Date().toISOString()
+      });
+      return send(res,created.replayed?200:201,canonicalEstimateResult(canonical,created.estimate.id,created.replayed,Array.isArray(payload.evidenceIds)?payload.evidenceIds:[]));
+    }
+
     if (req.method === 'GET' && req.url === '/health') return send(res, 200, { status: 'ok', service: 'elite-estimating' });
     if (req.method === 'POST' && req.url === '/v1/integrations/claims/inspection') {
       const secret=process.env.ELITE_CLAIMS_WEBHOOK_SECRET?.trim()||'';
