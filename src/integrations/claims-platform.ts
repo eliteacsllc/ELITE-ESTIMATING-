@@ -27,6 +27,7 @@ export function validateClaimEstimateSnapshot(input: ClaimEstimateSnapshot): Cla
     throw new Error("claim_estimate_identity_required");
   }
   if (!Number.isInteger(input.revision) || input.revision < 1) throw new Error("claim_estimate_revision_invalid");
+  if (!input.submittedBy || !input.submittedAt || Number.isNaN(Date.parse(input.submittedAt))) throw new Error("claim_estimate_submission_invalid");
   for (const evidence of input.valuationEvidence) {
     if (!evidence.id || !evidence.provider || !evidence.retrievedAt) throw new Error("valuation_provenance_required");
     if (evidence.confidence < 0 || evidence.confidence > 1) throw new Error("valuation_confidence_invalid");
@@ -38,11 +39,13 @@ export function buildEstimateQaHandoff(input: ClaimEstimateSnapshot) {
   validateClaimEstimateSnapshot(input);
   return {
     schemaVersion:"elite.claims-platform.v1",
+    eventId:`estimating:${input.estimateId}:revision:${input.revision}:created`,
     eventType:"estimate.created",
     tenantId:input.tenantId,
     claimId:input.claimId,
     correlationId:input.activityId,
     sourceSystem:"elite-estimating",
+    occurredAt:input.submittedAt,
     data:{
       estimateId:input.estimateId,
       revision:input.revision,
