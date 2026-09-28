@@ -42,6 +42,8 @@ import { supplementManagerCss, supplementManagerJs } from '../web/supplement-man
 import { claimsEventIdempotencyKey, parseClaimsEstimatingReady, verifyClaimsManagementSignature } from '../integrations/claims-management-inbound.js';
 import { InMemoryClaimsHandoffContextRepository, PostgresClaimsHandoffContextRepository, type ClaimsHandoffContextRepository } from '../integrations/claims-handoff-context.js';
 import { MemoryClaimsInspectionInbox, PostgresClaimsInspectionInbox, parseClaimsInspectionEvent, verifyClaimsWebhook } from '../integrations/claims-inspection.js';
+import { claimsPlatformClientFromEnv, normalizeValuationEvidence } from '../integrations/claims-platform-client.js';
+import { createHash } from 'node:crypto';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
@@ -97,6 +99,7 @@ const decisionService = new GovernedDecisionService(repository, entitlementServi
 const interchange = new EliteJsonInterchangeAdapter();
 const httpMetrics = new HttpMetrics();
 const claimsInspectionInbox = databaseUrl ? new PostgresClaimsInspectionInbox(databaseUrl) : new MemoryClaimsInspectionInbox();
+const claimsPlatformClient=claimsPlatformClientFromEnv();
 
 function baseHeaders(): Record<string, string> {
   return {
@@ -453,6 +456,34 @@ const server = createServer(async (req, res) => {
 
     if (parts[0] === 'v1' && parts[1] === 'estimates' && parts[2]) {
       const id = parts[2];
+      if (req.method === 'POST' && parts[3] === 'claims-handoff') {
+        authorize(actor,'estimate:read',actor.tenantId);
+        if(!claimsPlatformClient) return send(res,503,{error:'claims_platform_client_not_configured'});
+        const body=await json(req);
+        const estimate=await service.get(actor,id);
+        if(!estimate.claimId) throw new Error('estimate_claim_id_required');
+        const activityId=String(body.activityId??'').trim();
+        if(!activityId) throw new Error('activity_id_required');
+        const canonical=JSON.stringify({
+          id:estimate.id,revision:estimate.revision,claimId:estimate.claimId,tenantId:estimate.tenantId,
+          lines:estimate.lines,total:estimate.total,status:estimate.status,updatedAt:estimate.updatedAt
+        });
+        const snapshotRef='sha256:'+createHash('sha256').update(canonical).digest('hex');
+        const snapshot={
+          estimateId:estimate.id,
+          revision:estimate.revision,
+          claimId:estimate.claimId,
+          activityId,
+          tenantId:estimate.tenantId,
+          snapshotRef,
+          submittedBy:actor.userId,
+          submittedAt:new Date().toISOString(),
+          valuationEvidence:normalizeValuationEvidence(body.valuationEvidence),
+          humanApproved:estimate.status==='approved'
+        };
+        const delivery=await claimsPlatformClient.sendEstimateSnapshot(snapshot);
+        return send(res,202,{ok:true,delivery,snapshotRef,estimateId:estimate.id,revision:estimate.revision,activityId});
+      }
       if (req.method === 'GET' && parts.length === 3) return send(res, 200, await service.get(actor, id));
       if (parts[3] === 'damage-graph' && parts.length === 4) {
         if (req.method === 'GET') {
