@@ -1,0 +1,42 @@
+{
+  "version": "elite.integration-contract.v1",
+  "serviceId": "elite-estimating",
+  "repository": "eliteacsllc/ELITE-ESTIMATING-",
+  "standalone": true,
+  "spines": [
+    "claims"
+  ],
+  "role": "multi-vertical estimating and valuation engine",
+  "dependencies": {
+    "upstream": [
+      "claims-management",
+      "damage-iq",
+      "estimatics-library"
+    ],
+    "downstream": [
+      "elite-qa"
+    ]
+  },
+  "runtime": {
+    "urlEnv": "ELITE_ESTIMATING_URL",
+    "localPathEnv": "ELITE_ESTIMATING_PATH",
+    "healthPath": null,
+    "localCheckCommand": "npm run build && npm test"
+  },
+  "releaseGates": [
+    "tests",
+    "security",
+    "tenant-isolation",
+    "audit",
+    "backup-recovery",
+    "observability",
+    "integration-contract"
+  ],
+  "policies": {
+    "failure": "fail-closed",
+    "providerNeutral": true,
+    "noSharedDatabaseByDefault": true,
+    "explicitApiContracts": true,
+    "humanGovernedRelease": true
+  }
+}
