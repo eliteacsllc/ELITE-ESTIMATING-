@@ -20,7 +20,7 @@
   "runtime": {
     "urlEnv": "ELITE_ESTIMATING_URL",
     "localPathEnv": "ELITE_ESTIMATING_PATH",
-    "healthPath": null,
+    "healthPath": "/ready",
     "localCheckCommand": "npm run build && npm test"
   },
   "releaseGates": [
@@ -38,5 +38,11 @@
     "noSharedDatabaseByDefault": true,
     "explicitApiContracts": true,
     "humanGovernedRelease": true
+  },
+  "discovery": {
+    "registryEnv": "ELITE_SERVICE_REGISTRY_URL",
+    "registryTokenEnv": "ELITE_SERVICE_REGISTRY_TOKEN",
+    "directUrlWins": true,
+    "registryOptional": true
   }
 }
