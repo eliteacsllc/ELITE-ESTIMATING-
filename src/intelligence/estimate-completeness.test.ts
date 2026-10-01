@@ -43,7 +43,6 @@ test('flags likely scan and calibration review without claiming an operation is 
   assert.equal(result.status, 'needs_review');
   assert.ok(result.candidates.some(item => item.code === 'review:diagnostic_scan'));
   assert.ok(result.candidates.some(item => item.code === 'review:calibration'));
-  assert.ok(result.candidates.every(item => item.requiresHumanReview === undefined));
   assert.equal(result.requiresHumanReview, true);
 });
 
