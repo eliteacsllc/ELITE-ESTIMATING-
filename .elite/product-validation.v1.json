@@ -1,0 +1,13 @@
+{
+  "schemaVersion":"elite.product-validation/v1",
+  "product":"ELITE-ESTIMATING",
+  "evidenceAuthorities":["synthetic","human","production"],
+  "humanEvidenceRequiresConsent":true,
+  "signals":["confusion_point","dead_end","rage_click","abandonment","unexpected_navigation","copy_confusion","permission_failure","latency_issue","trust_issue","feature_request"],
+  "missions":[
+    {"id":"damage-to-estimate","critical":true,"journey":["identify vehicle","capture damage","select operations/parts","apply labor/material logic","produce estimate"]},
+    {"id":"procedure-evidence-check","critical":true,"journey":["surface repair procedure","show provenance","resolve conflict","require human approval where needed"]},
+    {"id":"estimate-revision","critical":true,"journey":["open estimate","compare revision","explain delta","save without data loss"]}
+  ],
+  "releaseBlockers":["critical_ux_finding","unsupported_repair_claim","estimate_data_loss","provenance_missing","insufficient_critical_journey_evidence"]
+}
