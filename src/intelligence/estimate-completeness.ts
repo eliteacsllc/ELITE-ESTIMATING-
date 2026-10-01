@@ -36,7 +36,7 @@ const TEXT = {
   electronics: /adas|radar|camera|sensor|module|airbag|srs|electrical|steering angle|blind spot|lane|windshield/i,
   calibration: /adas|radar|camera|sensor|calibrat|windshield|steering angle|blind spot|lane/i,
   structural: /structur|frame|rail|apron|pillar|rocker|quarter|floor|section|weld|unibody/i,
-  corrosion: /quarter|rocker|rail|pillar|apron|floor|panel|weld|section|replace|refinish/i,
+  corrosionComponent: /quarter|rocker|rail|pillar|apron|floor|roof|door shell|fender|decklid|panel|weld|section/i,
 };
 
 function lineText(line: EstimateLine): string {
@@ -132,7 +132,9 @@ function heuristicCandidates(estimate: Estimate): EstimateCompletenessCandidate[
     });
   }
 
-  const corrosionIds = matchingLineIds(lines, TEXT.corrosion);
+  const corrosionIds = lines
+    .filter(line => TEXT.corrosionComponent.test(lineText(line)) || (line.operation === 'refinish' && !/bumper|plastic|molding|trim/i.test(line.component)))
+    .map(line => line.id);
   const hasCorrosionLine = hasText(lines, /corrosion|cavity wax|seam sealer|anti.?corrosion|rustproof|weld.?through/i);
   if (corrosionIds.length && !hasCorrosionLine) {
     pushUnique(candidates, {
