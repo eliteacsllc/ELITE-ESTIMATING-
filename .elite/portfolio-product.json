@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "elite.portfolio-product.v1",
+  "canonicalGovernance": "eliteacsllc/elite-sdk:schemas/portfolio-governance.schema.json",
+  "repo": "ELITE-ESTIMATING-",
+  "lane": "sell-now",
+  "role": "estimating workflow and recommendation engine",
+  "asOf": "2026-09-15",
+  "commercial": {"activePayingCustomers":0,"paidPilots":0,"revenueVerified":false,"retentionMeasured":false,"funnelInstrumented":false,"caseStudyEvidence":false},
+  "technical": {"exactHeadCI":"blocked-infrastructure","tenantIsolation":"implemented-unverified","securityGate":"implemented-unverified","backupRestore":"implemented-unverified","rollback":"implemented-unverified","liveDeployment":"missing","crossRepoContractTests":"implemented-unverified"},
+  "financial": {"monthlyInfraCostKnown":false,"grossMarginMeasured":false,"cacMeasured":false,"ltvMeasured":false,"pipelineVerified":false},
+  "decisionRules": {"sourceIsNotCertification":true,"unknownFinancialsRemainUnknown":true,"externalOrIrreversibleActionsRequireApproval":true,"priorityOutcome":"prove estimate throughput, accuracy, QA pass rate and cost per completed estimate"}
+}
