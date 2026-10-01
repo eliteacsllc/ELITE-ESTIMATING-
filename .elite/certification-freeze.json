@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "mode": "certification-first",
+  "featureExpansion": "frozen-except-critical-fixes",
+  "majorDependencyUpgradesFrozen": true,
+  "requiredBeforeProduction": ["exact-head-verification","simulation","runtime-smoke","application-crawl","security","migration-preflight","backup-restore","rollback","staging-provenance","production-smoke","authorized-provider-evidence"],
+  "truthRules": {"mergeableIsCertified":false,"zeroJobActionsIsPass":false,"sourcePresenceIsProductionProof":false}
+}
