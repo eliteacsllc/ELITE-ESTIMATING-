@@ -80,3 +80,13 @@ test('does not duplicate scan review when a scan operation is already present', 
   assert.equal(result.candidates.some(item => item.code === 'review:diagnostic_scan'), false);
   assert.equal(result.candidates.some(item => item.code === 'review:calibration'), false);
 });
+
+
+test('does not infer corrosion protection from plastic or electronic replacement alone', () => {
+  const result = buildEstimateCompletenessReview(estimate([
+    line({ component: 'front radar sensor', operation: 'replace', procedureRefs: ['oem-radar'], safetyCritical: true }),
+    line({ id: 'scan', component: 'diagnostic scan', operation: 'scan' }),
+    line({ id: 'cal', component: 'front radar calibration', operation: 'calibrate' }),
+  ]));
+  assert.equal(result.candidates.some(item => item.code === 'review:corrosion_protection'), false);
+});
