@@ -120,3 +120,71 @@ test('expired execution tickets fail closed before launching an executor',async(
   registry.register(executor(plan.primary.agentId,plan.primary.implementationFamily,['market'],'x'));
   await assert.rejects(()=>new AgentMeshRuntime(registry).execute(plan,{},Date.parse(plan.ticket.expiresAt)+1),/fabric_ticket_expired/);
 });
+
+
+
+test('agent runtime fails closed before executor when governance denies',async()=>{
+  const snapshots=health([
+    ['pricing','pricing-a',['market']],
+    ['parts-sourcing','parts-b',['parts']],
+    ['carrier-rules','carrier-c',['carrier']],
+    ['estimate-audit','audit-d',['internal']],
+    ['oem-procedure','oem-e',['oem']],
+  ]);
+  const plan=buildFabricExecutionPlan({
+    tenantId:'tenant-a',estimateId:'estimate-gov-deny',revision:1,
+    feature:'parts_optimizer',criticality:'routine',utilization:.1,health:snapshots,nowMs:Date.now()
+  });
+  const registry=new AgentExecutorRegistry();
+  let calls=0;
+  registry.register({
+    ...executor(plan.primary.agentId,plan.primary.implementationFamily,['market'],'blocked'),
+    async execute(){calls+=1;return {outputKey:'blocked',confidence:1,evidenceRefs:['e1']};}
+  });
+  for(const shadow of plan.shadows) registry.register(executor(shadow.agentId,shadow.implementationFamily,['parts'],'blocked-shadow'));
+  const runtime=new AgentMeshRuntime(registry,()=>undefined,{
+    async evaluate(){return {decision:'deny',reason:'tenant_governance_frozen'};}
+  });
+  const result=await runtime.execute(plan,{});
+  assert.equal(calls,0);
+  assert.ok(result.candidates.length>=1);
+  assert.ok(result.candidates.every(candidate=>candidate.error==='tenant_governance_frozen'));
+});
+
+test('governance allow occurs before estimating executor',async()=>{
+  const snapshots=health([
+    ['pricing','pricing-a',['market']],
+    ['parts-sourcing','parts-b',['parts']],
+    ['carrier-rules','carrier-c',['carrier']],
+    ['estimate-audit','audit-d',['internal']],
+    ['oem-procedure','oem-e',['oem']],
+  ]);
+  const plan=buildFabricExecutionPlan({
+    tenantId:'tenant-a',estimateId:'estimate-gov-allow',revision:1,
+    feature:'parts_optimizer',criticality:'routine',utilization:.1,health:snapshots,nowMs:Date.now()
+  });
+  const registry=new AgentExecutorRegistry();
+  let governanceCalls=0,executorCalls=0;
+  registry.register({
+    agentId:plan.primary.agentId,
+    implementationFamily:plan.primary.implementationFamily,
+    sourceFamilies:['market'],
+    async execute(){
+      executorCalls+=1;
+      assert.equal(governanceCalls,1);
+      return {outputKey:'ok',confidence:.95,evidenceRefs:['e1']};
+    }
+  });
+  for(const shadow of plan.shadows) registry.register(executor(shadow.agentId,shadow.implementationFamily,['parts'],'shadow-ok'));
+  const runtime=new AgentMeshRuntime(registry,()=>undefined,{
+    async evaluate(input){
+      governanceCalls+=1;
+      assert.equal(input.tenantId,'tenant-a');
+      assert.equal(input.agentId,plan.primary.agentId);
+      return {decision:'allow',reason:'governance_policy_satisfied'};
+    }
+  });
+  const result=await runtime.execute(plan,{});
+  assert.equal(executorCalls,1);
+  assert.equal(result.candidates[0]?.outputKey,'ok');
+});

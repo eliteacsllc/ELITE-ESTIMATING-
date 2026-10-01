@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "1.0",
+  "product": "Elite Estimating OS",
+  "governanceProvider": "elite-agent-workforce",
+  "sdkContract": "@elite/sdk>=0.9.0",
+  "mode": "required",
+  "failOpen": false,
+  "identity": {
+    "tenantSource": "authenticated-principal",
+    "actorSource": "authenticated-principal",
+    "payloadOverrideAllowed": false
+  },
+  "agentIdPrefix": "elite.estimating",
+  "policy": {
+    "maxRisk": "high",
+    "allowedDataClasses": [
+      "estimate",
+      "claim",
+      "vehicle",
+      "property",
+      "valuation",
+      "evidence"
+    ],
+    "allowedDestinations": [
+      "elite-estimating",
+      "elite-claims",
+      "elite-qa",
+      "damage-iq"
+    ],
+    "highRiskCapabilities": [
+      "estimate.release",
+      "supplement.submit",
+      "valuation.publish",
+      "evidence.override"
+    ],
+    "highAndIrreversibleRequireAuthenticatedHumanApproval": true
+  },
+  "emergencyControls": {
+    "agentSuspend": true,
+    "agentRevoke": true,
+    "tenantFreeze": true
+  },
+  "audit": {
+    "required": true,
+    "hashChained": true,
+    "durablePersistenceRequiredForProduction": true
+  },
+  "standaloneMode": {
+    "supported": true,
+    "localFailClosedGuardRequired": true
+  },
+  "productionGate": {
+    "manifestRegistered": true,
+    "runtimeEnforcementRequired": true,
+    "exactReleaseVerificationRequired": true,
+    "certificationBlockedIfGovernanceUnavailable": true
+  }
+}

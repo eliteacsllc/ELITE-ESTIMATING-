@@ -31,6 +31,7 @@ export * from './agents/control-plane.js';
 export * from './agents/supervision.js';
 export * from './agents/fabric.js';
 export * from './agents/runtime.js';
+export * from './agents/governance.js';
 export * from './agents/planning-service.js';
 export * from './engine/estimate.js';
 export * from './engine/dependency.js';

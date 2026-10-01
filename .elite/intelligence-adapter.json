@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.0",
+  "contract": "elite.intelligence-adapter.v1",
+  "runtimeOwner": "eliteacsllc/blackbox",
+  "contractOwner": "eliteacsllc/elite-sdk",
+  "systemOfRecord": "local",
+  "domainLogicRemainsLocal": true,
+  "capabilities": [
+    "estimate-assist",
+    "valuation-evidence",
+    "scope-compare",
+    "variance-detection",
+    "provenance"
+  ],
+  "governance": {
+    "traceableFindings": true,
+    "tenantIsolationRequired": true,
+    "secretsInEvents": false,
+    "humanApprovalRequiredFor": [
+      "payment.execute",
+      "payout.execute",
+      "legal.publish",
+      "identity.request-sensitive",
+      "government.submit",
+      "claim.release",
+      "estimate.release",
+      "professional-opinion.release",
+      "destructive.execute"
+    ]
+  }
+}
