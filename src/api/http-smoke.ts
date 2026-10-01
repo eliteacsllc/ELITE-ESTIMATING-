@@ -97,6 +97,29 @@ const conflictEstimateResponse = await fetch(`${base}/v1/estimates`, {
 });
 await expectJson(conflictEstimateResponse, 409);
 
+const externalImportResponse = await fetch(`${base}/v1/imports/external-estimate`, {
+  method: 'POST', headers: estimatorHeaders,
+  body: JSON.stringify({
+    provider: 'ccc', sourceEstimateId: 'ci-ccc-0001',
+    asset: { assetClass: 'passenger_vehicle', vin: '1HGCM82633A004354' },
+    currency: 'USD', jurisdiction: 'US',
+    lines: [{
+      sourceLineId: '1', category: 'body', component: 'front radar sensor', operation: 'replace', quantity: 1,
+      procedureRefs: ['oem-radar'], safetyCritical: true, confidence: 0.9,
+      provenance: [{ provider: 'customer-export', sourceId: 'ci-ccc-0001:1', retrievedAt: '2026-10-01T00:00:00Z', licenseClass: 'customer_provided' }],
+    }],
+  }),
+});
+const externalImport = await expectJson(externalImportResponse, 201);
+assert.equal(externalImport.provider, 'ccc');
+assert.equal(externalImport.readyForHumanReview, true);
+assert.ok(((externalImport.completeness as Record<string, unknown>).candidates as Array<Record<string, unknown>>).some(item => item.code === 'review:diagnostic_scan'));
+
+const externalEstimateId = String((externalImport.estimate as Record<string, unknown>).id);
+const supplementDraft = await expectJson(await fetch(`${base}/v1/estimates/${externalEstimateId}/supplement-review-draft`, { headers: estimatorHeaders }), 200);
+assert.ok(Array.isArray(supplementDraft.items));
+assert.equal(supplementDraft.status, 'blocked');
+
 const estimateId = String(firstEstimate.id);
 const emptyCompleteness = await expectJson(await fetch(`${base}/v1/estimates/${estimateId}/completeness-review`, {
   headers: estimatorHeaders,

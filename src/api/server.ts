@@ -20,6 +20,8 @@ import { buildEstimateCompletenessReview } from '../intelligence/estimate-comple
 import type { AddSupplementChangeInput } from '../application/supplement-service.js';
 import { EliteJsonInterchangeAdapter, type EliteEstimateEnvelope } from '../interchange/elite-json.js';
 import { EstimateImportService } from '../interchange/import-service.js';
+import { ExternalEstimateImportService, type ExternalEstimateImportInput } from '../interchange/external-estimate-import.js';
+import { buildSupplementReviewDraft } from '../intelligence/supplement-review-draft.js';
 import { InMemoryImportReceiptRepository, PostgresImportReceiptRepository, type ImportReceiptRepository } from '../interchange/import-repository.js';
 import { InMemoryEvidenceRepository, PostgresEvidenceRepository, type EvidenceRepository } from '../evidence/repository.js';
 import { EvidenceService } from '../evidence/service.js';
@@ -94,6 +96,7 @@ const evidenceService = new EvidenceService(repository, evidenceRepository, blob
 const evidenceTransferService = blobStore ? new EvidenceTransferService(repository, evidenceRepository, blobStore) : null;
 const damageGraphService = new DamageGraphService(repository, damageGraphRepository);
 const importService = new EstimateImportService(service, repository, importReceiptRepository);
+const externalImportService = new ExternalEstimateImportService(service, repository, importReceiptRepository);
 const entitlementService = new TenantEntitlementService(entitlementRepository);
 const decisionService = new GovernedDecisionService(repository, entitlementService, decisionRepository, auditSink);
 const interchange = new EliteJsonInterchangeAdapter();
@@ -445,6 +448,11 @@ const server = createServer(async (req, res) => {
       return send(res, result.idempotent ? 200 : 201, result);
     }
 
+    if (req.method === 'POST' && parts.join('/') === 'v1/imports/external-estimate') {
+      const result = await externalImportService.import(actor, await json(req) as unknown as ExternalEstimateImportInput);
+      return send(res, result.idempotent ? 200 : 201, result);
+    }
+
     if (parts[0] === 'v1' && parts[1] === 'evidence' && parts[2] && req.method === 'GET' && parts[3] === 'download') {
       if (!evidenceTransferService) throw new Error('blob_storage_not_configured');
       return send(res, 200, await evidenceTransferService.createDownloadUrl(actor, parts[2]));
@@ -495,6 +503,10 @@ const server = createServer(async (req, res) => {
       if (req.method === 'GET' && parts[3] === 'completeness-review' && parts.length === 4) {
         const estimate = await service.get(actor, id);
         return send(res, 200, buildEstimateCompletenessReview(estimate));
+      }
+      if (req.method === 'GET' && parts[3] === 'supplement-review-draft' && parts.length === 4) {
+        const estimate = await service.get(actor, id);
+        return send(res, 200, buildSupplementReviewDraft(estimate));
       }
       if (parts[3] === 'damage-graph' && parts.length === 4) {
         if (req.method === 'GET') {
