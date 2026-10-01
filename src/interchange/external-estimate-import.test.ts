@@ -4,8 +4,9 @@ import { ExternalEstimateImportService } from './external-estimate-import.js';
 import { EstimatingService } from '../application/estimating-service.js';
 import { InMemoryEstimateRepository } from '../persistence/memory.js';
 import { InMemoryImportReceiptRepository } from './import-repository.js';
+import type { Principal } from '../security/rbac.js';
 
-const principal={userId:'estimator-1',tenantId:'tenant-1',roles:['tenant_admin'] as const};
+const principal: Principal={userId:'estimator-1',tenantId:'tenant-1',roles:['tenant_admin']};
 
 test('imports a governed CCC-style normalized estimate and is idempotent', async()=>{
  const estimates=new InMemoryEstimateRepository();
