@@ -16,6 +16,7 @@ import { OidcPrincipalVerifier, oidcConfigFromEnv } from '../security/oidc.js';
 import { InMemoryTokenBucketRateLimiter, PostgresTokenBucketRateLimiter, principalRateLimitKey, rateLimitPolicyFromEnv, type RateLimiter } from '../security/rate-limit.js';
 import { authorize, type Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
+import { buildEstimateCompletenessReview } from '../intelligence/estimate-completeness.js';
 import type { AddSupplementChangeInput } from '../application/supplement-service.js';
 import { EliteJsonInterchangeAdapter, type EliteEstimateEnvelope } from '../interchange/elite-json.js';
 import { EstimateImportService } from '../interchange/import-service.js';
@@ -491,6 +492,10 @@ const server = createServer(async (req, res) => {
     if (parts[0] === 'v1' && parts[1] === 'estimates' && parts[2]) {
       const id = parts[2];
       if (req.method === 'GET' && parts.length === 3) return send(res, 200, await service.get(actor, id));
+      if (req.method === 'GET' && parts[3] === 'completeness-review' && parts.length === 4) {
+        const estimate = await service.get(actor, id);
+        return send(res, 200, buildEstimateCompletenessReview(estimate));
+      }
       if (parts[3] === 'damage-graph' && parts.length === 4) {
         if (req.method === 'GET') {
           const revisionValue = url.searchParams.get('revision');
