@@ -46,6 +46,9 @@ import { claimsEventIdempotencyKey, parseClaimsEstimatingReady, verifyClaimsMana
 import { InMemoryClaimsHandoffContextRepository, PostgresClaimsHandoffContextRepository, type ClaimsHandoffContextRepository } from '../integrations/claims-handoff-context.js';
 import { MemoryClaimsInspectionInbox, PostgresClaimsInspectionInbox, parseClaimsInspectionEvent, verifyClaimsWebhook } from '../integrations/claims-inspection.js';
 import { canonicalEstimateResult, validateCanonicalClaimsEstimateRequest, type CanonicalClaimsEstimateRequest } from '../integrations/canonical-claims-inbound.js';
+import { queryEstimatics } from '../connectors/estimatics-client.js';
+import { buildEstimaticsCompletenessQuery } from '../connectors/estimatics-completeness.js';
+import { assessEstimaticsEnvelope } from '../connectors/estimatics.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowEphemeral = process.env.ELITE_ALLOW_EPHEMERAL === '1';
@@ -507,6 +510,15 @@ const server = createServer(async (req, res) => {
       if (req.method === 'GET' && parts[3] === 'supplement-review-draft' && parts.length === 4) {
         const estimate = await service.get(actor, id);
         return send(res, 200, buildSupplementReviewDraft(estimate));
+      }
+      if (req.method === 'GET' && parts[3] === 'estimatics-context' && parts.length === 4) {
+        const estimate = await service.get(actor, id);
+        const baseUrl = process.env.ELITE_ESTIMATICS_SERVICE_URL?.trim() || '';
+        const token = process.env.ELITE_ESTIMATICS_SERVICE_TOKEN?.trim() || '';
+        if (!baseUrl || !token) throw new Error('estimatics_not_configured');
+        const query = buildEstimaticsCompletenessQuery(estimate);
+        const envelope = await queryEstimatics({ baseUrl, token, tenantId: actor.tenantId }, query, `estimate-completeness:${estimate.id}:${estimate.revision}`);
+        return send(res, 200, { query, envelope, decision: assessEstimaticsEnvelope(envelope, actor.tenantId) });
       }
       if (parts[3] === 'damage-graph' && parts.length === 4) {
         if (req.method === 'GET') {
