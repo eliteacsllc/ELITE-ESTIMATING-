@@ -45,7 +45,7 @@ test('import normalizes tenant/status and is idempotent', async () => {
   assert.equal(first.idempotent, false);
   assert.equal(first.estimate.tenantId, principal.tenantId);
   assert.equal(first.estimate.status, 'review');
-  assert.equal(first.estimate.revision, 1);
+  assert.equal(first.estimate.revision, 2); // Local creation followed by imported scope replacement.
   assert.equal(first.estimate.lines[0]?.humanApproved, false);
 
   const second = await imports.importElite(principal, envelope());

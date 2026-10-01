@@ -16,7 +16,7 @@ export type VehicleConditionReview={
 export function confirmCondition(item:VehicleConditionReview, reviewerId:string, rating:ConditionRating, notes?:string):VehicleConditionReview{
   if(!reviewerId.trim())throw new Error('condition_reviewer_required');
   if(!item.evidenceRefs.length && rating!=='unknown')throw new Error('condition_evidence_required');
-  return {...item,confirmedRating:rating,notes:notes??item.notes,reviewedBy:reviewerId,reviewedAt:new Date().toISOString()};
+  return {...item,confirmedRating:rating,...(notes!==undefined?{notes}:{}),reviewedBy:reviewerId,reviewedAt:new Date().toISOString()};
 }
 
 export type EstimateQaExport={

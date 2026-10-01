@@ -1,3 +1,3 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';const read=p=>readFile(new URL('../'+p,import.meta.url),'utf8');
+import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';const read=(p:string)=>readFile(new URL('../../'+p,import.meta.url),'utf8');
 test('Estimating public API exports Estimatics contracts and receipts',async()=>{const s=await read('src/index.ts');assert.match(s,/connectors\/estimatics\.js/);assert.match(s,/connectors\/estimatics-client\.js/);assert.match(s,/connectors\/estimatics-receipts\.js/);});
 test('production deploy requires Estimatics URL and token',async()=>{const s=await read('.github/workflows/deploy-cloudflare-production.yml');assert.match(s,/ELITE_ESTIMATICS_SERVICE_URL/);assert.match(s,/ELITE_ESTIMATICS_SERVICE_TOKEN/);assert.match(s,/must use HTTPS/);});

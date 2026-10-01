@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EstimatingService } from '../application/estimating-service.js';
+import { auditEstimateIntelligence } from '../intelligence/estimate-audit.js';
 import { IdempotentEstimateCreationService } from '../application/idempotent-estimate-create.js';
 import { SupplementService } from '../application/supplement-service.js';
 import { IdempotentSupplementCreationService } from '../application/idempotent-supplement-create.js';
@@ -374,7 +375,7 @@ const server = createServer(async (req, res) => {
       }
       if(parts.length===6&&parts[5]==='link-estimate'&&req.method==='POST'){
         authorize(actor,'estimate:update',actor.tenantId);
-        const eventId=parts[4]; const body=await json(req); const estimateId=String(body.estimateId??'').trim();
+        const eventId=parts[4]!; const body=await json(req); const estimateId=String(body.estimateId??'').trim();
         if(!estimateId) throw new Error('estimate_id_required');
         const estimate=await service.get(actor,estimateId);
         const queued=(await claimsInspectionInbox.list(actor.tenantId,'queued',200)).find(row=>row.eventId===eventId);
@@ -454,6 +455,7 @@ const server = createServer(async (req, res) => {
     if (parts[0] === 'v1' && parts[1] === 'estimates' && parts[2]) {
       const id = parts[2];
       if (req.method === 'GET' && parts.length === 3) return send(res, 200, await service.get(actor, id));
+      if (req.method === 'GET' && parts[3] === 'review' && parts.length === 4) return send(res, 200, auditEstimateIntelligence(await service.get(actor, id)));
       if (parts[3] === 'damage-graph' && parts.length === 4) {
         if (req.method === 'GET') {
           const revisionValue = url.searchParams.get('revision');

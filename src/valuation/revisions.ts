@@ -34,12 +34,12 @@ export function createValuationRevision<T extends ValuationResult | DiminishedVa
     : input.result.preLoss.evidence;
   return {
     id: `valrev_${crypto.randomUUID()}`,
-    claimId: input.claimId,
+    ...(input.claimId !== undefined ? {claimId:input.claimId} : {}),
     kind: input.kind,
     createdAt: new Date().toISOString(),
     createdBy: input.createdBy,
     reason: input.reason.trim() || 'valuation_updated',
-    supersedesId: input.supersedes?.id,
+    ...(input.supersedes !== undefined ? {supersedesId:input.supersedes.id} : {}),
     selectedComparableIds: [...selectedComparableIds],
     result: structuredClone(input.result),
     evidenceSnapshot: structuredClone(evidenceSnapshot),
@@ -52,7 +52,7 @@ export function approveValuationRevision<T>(revision: ValuationRevision<T>, inpu
   return {
     ...revision,
     approved: true,
-    approval: { approvedBy: input.approvedBy, approvedAt: new Date().toISOString(), note: input.note?.trim() || undefined },
+    approval: { approvedBy: input.approvedBy, approvedAt: new Date().toISOString(), ...(input.note?.trim()?{note:input.note.trim()}:{}) },
   };
 }
 

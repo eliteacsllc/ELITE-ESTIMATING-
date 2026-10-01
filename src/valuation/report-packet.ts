@@ -24,7 +24,7 @@ export function buildFairMarketValuePacket(subject:ReportPacket['subject'],valua
     reportType:'fair_market_value',generatedAt:new Date().toISOString(),subject,
     summary:{indicatedValue:valuation.indicatedValue,confidence:valuation.confidence,reviewRequired:valuation.confidence<75},
     methodology,
-    comparables:valuation.adjustedComparables.filter(c=>valuation.selectedComparableIds.includes(c.id)).map(c=>({id:c.id,price:c.price,adjustedPrice:c.adjustedPrice,matchScore:c.matchScore,source:c.source,sourceUrl:c.sourceUrl,retrievedAt:c.retrievedAt,adjustments:c.adjustments})),
+    comparables:valuation.adjustedComparables.filter(c=>valuation.selectedComparableIds.includes(c.id)).map(c=>({id:c.id,price:c.price,adjustedPrice:c.adjustedPrice,matchScore:c.matchScore,...(c.source!==undefined?{source:c.source}:{}),...(c.sourceUrl!==undefined?{sourceUrl:c.sourceUrl}:{}),...(c.retrievedAt!==undefined?{retrievedAt:c.retrievedAt}:{}),adjustments:c.adjustments})),
     evidence:valuation.evidence,
     disclosure:'Preliminary analytical output. Final appraisal conclusions require authorized human review and source verification.'
   };
@@ -37,6 +37,6 @@ export function buildDiminishedValuePacket(subject:ReportPacket['subject'],valua
     reportType:'diminished_value',
     summary:{indicatedValue:valuation.diminishedValue,confidence:valuation.confidence,reviewRequired:valuation.reviewRequired},
     methodology:[...methodology,'Diminished value compares the supported pre-loss indication with modeled and/or market-supported post-loss value, with documented damage adjustments.'],
-    evidence:[...packet.evidence,...valuation.damageAdjustments.map((a,i)=>({type:'damage_adjustment',id:a.evidenceId||`damage-${i+1}`,source:a.source,value:a.amount}))]
+    evidence:[...packet.evidence,...valuation.damageAdjustments.map((a,i)=>({type:'damage_adjustment',id:a.evidenceId||`damage-${i+1}`,...(a.source!==undefined?{source:a.source}:{}),value:a.amount}))]
   };
 }

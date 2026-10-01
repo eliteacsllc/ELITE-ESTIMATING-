@@ -33,17 +33,18 @@ export type ValuationHttpRequest = {
 
 function demandDraft(input: ValuationHttpRequest, revision: ReturnType<typeof createValuationRevision>) {
   if (!input.demand) return undefined;
-  return createDemandLetter({ ...input.demand, claimNumber: input.demand.claimNumber ?? input.claimId, valuation: revision });
+  const claimNumber = input.demand.claimNumber ?? input.claimId;
+  return createDemandLetter({ ...input.demand, ...(claimNumber !== undefined ? {claimNumber} : {}), valuation: revision });
 }
 
 function subjectForReport(subject: Record<string, unknown>) {
   return {
-    vin: typeof subject.vin === 'string' ? subject.vin : undefined,
-    year: typeof subject.year === 'number' ? subject.year : undefined,
-    make: typeof subject.make === 'string' ? subject.make : undefined,
-    model: typeof subject.model === 'string' ? subject.model : undefined,
-    trim: typeof subject.trim === 'string' ? subject.trim : undefined,
-    mileage: typeof subject.mileage === 'number' ? subject.mileage : undefined,
+    ...(typeof subject.vin === 'string' ? {vin:subject.vin} : {}),
+    ...(typeof subject.year === 'number' ? {year:subject.year} : {}),
+    ...(typeof subject.make === 'string' ? {make:subject.make} : {}),
+    ...(typeof subject.model === 'string' ? {model:subject.model} : {}),
+    ...(typeof subject.trim === 'string' ? {trim:subject.trim} : {}),
+    ...(typeof subject.mileage === 'number' ? {mileage:subject.mileage} : {}),
   };
 }
 
@@ -56,13 +57,13 @@ export function runValuationRequest(actor: Principal, input: ValuationHttpReques
     const result = calculateMarketValuation({
       subject: input.subject as never,
       comparables: input.comparables as never,
-      selectedComparableIds: input.selectedComparableIds,
-      bookSources: input.bookSources as never,
-      policy: input.policy as never,
-      blendBookWeight: input.blendBookWeight,
+      ...(input.selectedComparableIds !== undefined ? {selectedComparableIds:input.selectedComparableIds} : {}),
+      ...(input.bookSources !== undefined ? {bookSources:input.bookSources as never} : {}),
+      ...(input.policy !== undefined ? {policy:input.policy as never} : {}),
+      ...(input.blendBookWeight !== undefined ? {blendBookWeight:input.blendBookWeight} : {}),
     });
     const revision = createValuationRevision({
-      claimId: input.claimId,
+      ...(input.claimId !== undefined ? {claimId:input.claimId} : {}),
       kind: 'market_value',
       createdBy: actor.userId,
       reason: input.reason ?? 'preliminary_market_valuation',
@@ -75,15 +76,15 @@ export function runValuationRequest(actor: Principal, input: ValuationHttpReques
   const result = calculateDiminishedValue({
     subject: input.subject as never,
     comparables: input.comparables as never,
-    selectedComparableIds: input.selectedComparableIds,
-    bookSources: input.bookSources as never,
-    policy: input.policy as never,
-    blendBookWeight: input.blendBookWeight,
+    ...(input.selectedComparableIds !== undefined ? {selectedComparableIds:input.selectedComparableIds} : {}),
+    ...(input.bookSources !== undefined ? {bookSources:input.bookSources as never} : {}),
+    ...(input.policy !== undefined ? {policy:input.policy as never} : {}),
+    ...(input.blendBookWeight !== undefined ? {blendBookWeight:input.blendBookWeight} : {}),
     damageAdjustments: (input.damageAdjustments ?? []) as never,
-    postLossMarketEvidence: input.postLossMarketEvidence,
+    ...(input.postLossMarketEvidence !== undefined ? {postLossMarketEvidence:input.postLossMarketEvidence} : {}),
   });
   const revision = createValuationRevision({
-    claimId: input.claimId,
+    ...(input.claimId !== undefined ? {claimId:input.claimId} : {}),
     kind: 'diminished_value',
     createdBy: actor.userId,
     reason: input.reason ?? 'preliminary_diminished_value',

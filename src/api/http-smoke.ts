@@ -98,6 +98,11 @@ const conflictEstimateResponse = await fetch(`${base}/v1/estimates`, {
 await expectJson(conflictEstimateResponse, 409);
 
 const estimateId = String(firstEstimate.id);
+const review = await expectJson(await fetch(`${base}/v1/estimates/${estimateId}/review`, { headers: estimatorHeaders }), 200);
+assert.equal(review.estimateId, estimateId);
+assert.equal(review.revision, firstEstimate.revision);
+assert.equal(review.green, false);
+assert.ok((review.findings as Array<Record<string, unknown>>).some(f => f.code === 'estimate_empty'));
 const decisionBody = JSON.stringify({
   candidates: [
     {
