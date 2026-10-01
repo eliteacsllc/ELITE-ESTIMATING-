@@ -61,7 +61,7 @@ function pushUnique(target: EstimateCompletenessCandidate[], candidate: Estimate
 
 function auditCandidates(estimate: Estimate): EstimateCompletenessCandidate[] {
   const audit = auditEstimateIntelligence(estimate);
-  return audit.findings.map(finding => ({
+  return audit.findings.map((finding): EstimateCompletenessCandidate => ({
     code: `audit:${finding.code}`,
     severity: finding.severity === 'blocker' ? 'blocker' : 'review',
     title: finding.code.replaceAll('_', ' '),
