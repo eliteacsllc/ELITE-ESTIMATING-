@@ -98,6 +98,13 @@ const conflictEstimateResponse = await fetch(`${base}/v1/estimates`, {
 await expectJson(conflictEstimateResponse, 409);
 
 const estimateId = String(firstEstimate.id);
+const emptyCompleteness = await expectJson(await fetch(`${base}/v1/estimates/${estimateId}/completeness-review`, {
+  headers: estimatorHeaders,
+}), 200);
+assert.equal(emptyCompleteness.status, 'blocked');
+assert.equal(emptyCompleteness.requiresHumanReview, true);
+assert.ok(Array.isArray(emptyCompleteness.candidates));
+assert.ok((emptyCompleteness.candidates as Array<Record<string, unknown>>).some(item => item.code === 'audit:estimate_empty'));
 const decisionBody = JSON.stringify({
   candidates: [
     {
