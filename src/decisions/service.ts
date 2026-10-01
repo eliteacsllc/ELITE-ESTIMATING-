@@ -13,13 +13,15 @@ import type { AuditSink } from '../audit/audit.js';
 import { auditEvent, NoopAuditSink } from '../audit/audit.js';
 import { AgentMeshPlanningService, type AgentMeshPlanRequest, type AgentMeshPlanView } from '../agents/planning-service.js';
 import type { DecisionRecord, DecisionRecordRepository, DecisionType } from './repository.js';
+import { buildEstimateCompletenessReview } from '../intelligence/estimate-completeness.js';
 
 export type PartsDecisionInput = { candidates: PartCandidate[]; policy: PartsOptimizationPolicy };
 export type RepairReplaceDecisionInput = { repair: RepairOption; replacement: ReplaceOption; policy: RepairReplacePolicy };
+export type CompletenessFindingDecisionInput = { code: string; decision: 'accepted' | 'rejected' | 'deferred'; reason: string; evidenceRefs?: string[] };
 
 export type GovernedDecision<T> = { record: DecisionRecord; result: T; replayed: boolean };
 
-const FEATURE_BY_DECISION: Record<DecisionType, FeatureId> = {
+const FEATURE_BY_DECISION: Record<Exclude<DecisionType, 'completeness_finding'>, FeatureId> = {
   parts_optimization: 'parts_optimizer',
   repair_replace: 'repair_replace',
   total_loss: 'total_loss',
@@ -41,9 +43,11 @@ export class GovernedDecisionService {
     authorize(principal, 'estimate:read', principal.tenantId);
     const estimate = await this.estimates.getById(principal.tenantId, estimateId);
     if (!estimate) throw new Error('estimate_not_found');
-    const profile = await this.entitlements.get(principal, estimate.asset.assetClass);
-    const resolved = resolveEntitlements({ enabled: profile.enabledFeatures, automationLevel: profile.automationLevel }, estimate.asset.assetClass);
-    assertFeatureEnabled(resolved, FEATURE_BY_DECISION[decisionType]);
+    if (decisionType !== 'completeness_finding') {
+      const profile = await this.entitlements.get(principal, estimate.asset.assetClass);
+      const resolved = resolveEntitlements({ enabled: profile.enabledFeatures, automationLevel: profile.automationLevel }, estimate.asset.assetClass);
+      assertFeatureEnabled(resolved, FEATURE_BY_DECISION[decisionType]);
+    }
     return estimate;
   }
 
@@ -92,6 +96,35 @@ export class GovernedDecisionService {
     if (input.currency !== estimate.currency) throw new Error('decision_currency_mismatch');
     const result = analyzeTotalLoss(input);
     return this.persist(principal, estimate, 'total_loss', input, result);
+  }
+
+
+  async decideCompletenessFinding(principal: Principal, estimateId: string, input: CompletenessFindingDecisionInput): Promise<GovernedDecision<Record<string, unknown>>> {
+    const estimate = await this.context(principal, estimateId, 'completeness_finding');
+    const code = input.code?.trim();
+    const reason = input.reason?.trim();
+    if (!code) throw new Error('completeness_finding_code_required');
+    if (!['accepted','rejected','deferred'].includes(input.decision)) throw new Error('completeness_finding_decision_invalid');
+    if (!reason || reason.length > 2000) throw new Error('completeness_finding_reason_required');
+    const review = buildEstimateCompletenessReview(estimate);
+    const finding = review.candidates.find(candidate => candidate.code === code);
+    if (!finding) throw new Error('completeness_finding_not_found');
+    const evidenceRefs = [...new Set((input.evidenceRefs ?? []).map(value => value.trim()).filter(Boolean))].slice(0, 50);
+    const result = {
+      code,
+      decision: input.decision,
+      reason,
+      evidenceRefs,
+      finding: {
+        severity: finding.severity,
+        title: finding.title,
+        sourceMode: finding.sourceMode,
+        confidence: finding.confidence,
+        suggestedOperation: finding.suggestedOperation ?? null,
+      },
+      humanDecision: true,
+    };
+    return this.persist(principal, estimate, 'completeness_finding', { code, decision: input.decision, reason, evidenceRefs }, result);
   }
 
   async agentMeshPlan(principal: Principal, estimateId: string, input: AgentMeshPlanRequest): Promise<AgentMeshPlanView> {

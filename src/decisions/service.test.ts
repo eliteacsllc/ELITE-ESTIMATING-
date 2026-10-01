@@ -108,3 +108,25 @@ test('decision history is tenant-scoped through estimate lookup', async () => {
   const other: Principal = { userId: 'other', tenantId: 'tenant-b', roles: ['estimator'] };
   await assert.rejects(() => service.list(other, estimate.id), /estimate_not_found/);
 });
+
+
+test('estimator can persist accept or reject decisions for current completeness findings', async () => {
+  const { estimate, estimating, decisions, service } = await setup();
+  await estimating.replaceLines(estimator, estimate.id, [{
+    id: 'radar', category: 'body', component: 'front radar sensor', operation: 'replace', quantity: 1,
+    total: { amountMinor: 10000, currency: 'USD' }, procedureRefs: ['oem-radar'], safetyCritical: true,
+    humanApproved: true, provenance: [provenance],
+  }]);
+  const first = await service.decideCompletenessFinding(estimator, estimate.id, {
+    code: 'review:diagnostic_scan', decision: 'accepted', reason: 'OEM procedure requires scan', evidenceRefs: ['oem-proc-1'],
+  });
+  assert.equal(first.record.decisionType, 'completeness_finding');
+  assert.equal((first.result as Record<string, unknown>).decision, 'accepted');
+  assert.equal((first.result as Record<string, unknown>).humanDecision, true);
+  const replay = await service.decideCompletenessFinding(estimator, estimate.id, {
+    code: 'review:diagnostic_scan', decision: 'accepted', reason: 'OEM procedure requires scan', evidenceRefs: ['oem-proc-1'],
+  });
+  assert.equal(replay.replayed, true);
+  const rows = await decisions.listByEstimate('tenant-a', estimate.id);
+  assert.ok(rows.some(row => row.decisionType === 'completeness_finding'));
+});
