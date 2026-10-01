@@ -19,28 +19,28 @@ export const intelligenceWorkspaceJs = `(() => {
     return [['Status',review.status||'—'],['Score',review.score??'—'],['Review items',(s.blockers||0)+(s.reviews||0)+(s.opportunities||0)],['Supplement risk',risk.band||risk.level||risk.score||'—']].map(([k,v])=>'<div class="intelMetric"><small>'+escLocal(k)+'</small><b>'+escLocal(v)+'</b></div>').join('');
   };
   function renderReview(review){
-    window.__eliteCompletenessReview=review;
+    globalThis.__eliteCompletenessReview=review;
     document.querySelector('#intelSummary').innerHTML=summary(review);
     const target=document.querySelector('#intelFindings'),items=review.candidates||[];
     target.innerHTML=items.length?items.map((f,i)=>'<article class="intelFinding" data-severity="'+escLocal(f.severity)+'"><div class="intelFindingHead"><b>'+escLocal(f.title)+'</b><span>'+escLocal(f.severity).toUpperCase()+' · '+Math.round(Number(f.confidence||0)*100)+'%</span></div><p>'+escLocal(f.reason)+'</p><div class="intelEvidence"><strong>Evidence:</strong> '+escLocal((f.evidenceRequired||[]).join(' • ')||'Human review')+'</div><div class="intelDecision"><span class="intelSourceMode">'+escLocal(f.sourceMode||'review')+'</span> · '+escLocal(f.code)+'</div><div class="intelButtons"><button class="secondary" data-decision="accepted" data-index="'+i+'">Accept</button><button class="secondary" data-decision="rejected" data-index="'+i+'">Reject</button><button class="secondary" data-decision="deferred" data-index="'+i+'">Defer</button></div></article>').join(''):'<div class="intelEmpty">No unresolved completeness findings.</div>';
     target.querySelectorAll('[data-decision]').forEach(btn=>btn.onclick=()=>recordDecision(btn.dataset.decision,Number(btn.dataset.index)));
   }
   async function loadReview(){
-    if(!window.estimate)return note('Load an estimate first.',true);
+    if(!estimate)return note('Load an estimate first.',true);
     try{const review=await api('/v1/estimates/'+estimate.id+'/completeness-review');renderReview(review);openTab();note('Completeness review refreshed.');}catch(e){note(e.message,true)}
   }
   async function recordDecision(decision,index){
-    const finding=window.__eliteCompletenessReview?.candidates?.[index];if(!finding)return;
-    const reason=prompt('Reason for '+decision+' decision on '+finding.title+':');if(!reason?.trim())return;
-    try{const result=await api('/v1/estimates/'+estimate.id+'/decisions/completeness-finding',{method:'POST',body:JSON.stringify({code:finding.code,decision,reason:reason.trim(),evidenceRefs:[]})});note('Human '+decision+' decision recorded'+(result.replayed?' (existing decision replayed).':'.'));}catch(e){note(e.message,true)}
+    const finding=globalThis.__eliteCompletenessReview?.candidates?.[index];if(!finding)return;
+    const card=document.querySelector('.intelFinding [data-index="'+index+'"]')?.closest('.intelFinding');const reason=card?.querySelector('[data-reason]')?.value?.trim();if(!reason)return note('Enter a decision reason first.',true);
+    try{const result=await api('/v1/estimates/'+estimate.id+'/decisions/completeness-finding',{method:'POST',body:JSON.stringify({code:finding.code,decision,reason,evidenceRefs:[]})});note('Human '+decision+' decision recorded'+(result.replayed?' (existing decision replayed).':'.'));}catch(e){note(e.message,true)}
   }
   async function loadEvidence(){
-    if(!window.estimate)return note('Load an estimate first.',true);
+    if(!estimate)return note('Load an estimate first.',true);
     const target=document.querySelector('#intelContext');target.innerHTML='<div class="intelEmpty">Querying governed repair knowledge…</div>';
     try{const data=await api('/v1/estimates/'+estimate.id+'/estimatics-context');const items=data.envelope?.items||[];target.innerHTML='<div class="intelStatus '+(data.decision?.blocked?'blocked':data.decision?.requiresHumanReview?'needs_review':'ready')+'">'+(data.decision?.blocked?'BLOCKED KNOWLEDGE':data.decision?.requiresHumanReview?'HUMAN REVIEW REQUIRED':'REFERENCE READY')+'</div>'+(items.length?items.map(x=>'<div class="intelEvidenceItem"><b>'+escLocal(x.title)+'</b><small>'+escLocal(x.kind)+' · '+escLocal(x.status)+' · '+escLocal((x.citations||[]).map(c=>c.source_id).join(', '))+'</small></div>').join(''):'<div class="intelEmpty">No applicable knowledge records returned.</div>');}catch(e){target.innerHTML='<div class="intelEmpty">'+escLocal(e.message)+'</div>'}
   }
   async function loadDraft(){
-    if(!window.estimate)return note('Load an estimate first.',true);
+    if(!estimate)return note('Load an estimate first.',true);
     const target=document.querySelector('#intelContext');try{const data=await api('/v1/estimates/'+estimate.id+'/supplement-review-draft');target.innerHTML='<div class="intelStatus '+escLocal(data.status)+'">'+escLocal(data.status).toUpperCase()+'</div><div class="intelFieldLink">'+escLocal(data.disclaimer)+'</div>'+(data.items||[]).map(x=>'<div class="intelEvidenceItem"><b>'+escLocal(x.title)+'</b><div class="intelDraft">'+escLocal(x.note)+'</div><small>'+escLocal((x.evidenceRequired||[]).join(' • '))+'</small></div>').join('');}catch(e){target.innerHTML='<div class="intelEmpty">'+escLocal(e.message)+'</div>'}
   }
   async function importStructured(){
@@ -49,7 +49,7 @@ export const intelligenceWorkspaceJs = `(() => {
     const provider=document.querySelector('#intelProvider').value,sourceEstimateId=document.querySelector('#intelSourceId').value.trim()||payload.sourceEstimateId;
     if(!sourceEstimateId)return note('Source estimate ID is required.',true);
     const request={provider,sourceEstimateId,claimId:payload.claimId,asset:payload.asset,locale:payload.locale,currency:payload.currency||'USD',jurisdiction:payload.jurisdiction||'US',lines:payload.lines||[]};
-    try{const result=await api('/v1/imports/external-estimate',{method:'POST',body:JSON.stringify(request)});window.estimate=result.estimate;window.lines=estimate.lines||[];if(typeof render==='function')render();if(typeof renderInspector==='function')renderInspector(null);renderReview(result.completeness);note((result.idempotent?'Re-opened':'Imported')+' '+provider.toUpperCase()+' estimate and ran completeness review.');}catch(e){note(e.message,true)}
+    try{const result=await api('/v1/imports/external-estimate',{method:'POST',body:JSON.stringify(request)});estimate=result.estimate;lines=estimate.lines||[];if(typeof render==='function')render();if(typeof renderInspector==='function')renderInspector(null);renderReview(result.completeness);note((result.idempotent?'Re-opened':'Imported')+' '+provider.toUpperCase()+' estimate and ran completeness review.');}catch(e){note(e.message,true)}
   }
   document.querySelector('#intelRefresh').onclick=loadReview;
   document.querySelector('#intelEvidence').onclick=loadEvidence;
@@ -57,5 +57,5 @@ export const intelligenceWorkspaceJs = `(() => {
   document.querySelector('#intelImportBtn').onclick=importStructured;
   document.querySelector('#intelChooseFile').onclick=()=>document.querySelector('#intelFile').click();
   document.querySelector('#intelFile').onchange=async e=>{const file=e.target.files?.[0];if(file)document.querySelector('#intelPayload').value=await file.text()};
-  document.addEventListener('click',e=>{if(e.target?.id==='loadEstimate'||e.target?.classList?.contains('queueItem'))setTimeout(()=>{if(window.estimate)loadReview()},250)});
+  document.addEventListener('click',e=>{if(e.target?.id==='loadEstimate'||e.target?.classList?.contains('queueItem'))setTimeout(()=>{if(estimate)loadReview()},250)});
 })();`;
