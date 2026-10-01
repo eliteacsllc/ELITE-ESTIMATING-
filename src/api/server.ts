@@ -42,6 +42,7 @@ import { evaluateOutboxHealth, outboxHealthPolicyFromEnv, renderOperationalMetri
 import { appCss, appJs, indexHtml } from '../web/assets.js';
 import { operationsCss, operationsJs } from '../web/operations.js';
 import { supplementManagerCss, supplementManagerJs } from '../web/supplement-manager.js';
+import { intelligenceWorkspaceCss, intelligenceWorkspaceJs } from '../web/intelligence-workspace.js';
 import { claimsEventIdempotencyKey, parseClaimsEstimatingReady, verifyClaimsManagementSignature } from '../integrations/claims-management-inbound.js';
 import { InMemoryClaimsHandoffContextRepository, PostgresClaimsHandoffContextRepository, type ClaimsHandoffContextRepository } from '../integrations/claims-handoff-context.js';
 import { MemoryClaimsInspectionInbox, PostgresClaimsInspectionInbox, parseClaimsInspectionEvent, verifyClaimsWebhook } from '../integrations/claims-inspection.js';
@@ -288,8 +289,8 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
       const html = indexHtml
-        .replace('</head>', '<link rel="stylesheet" href="/ops.css"><link rel="stylesheet" href="/supp.css"></head>')
-        .replace('</body>', '<script src="/ops.js" defer></script><script src="/supp.js" defer></script></body>');
+        .replace('</head>', '<link rel="stylesheet" href="/ops.css"><link rel="stylesheet" href="/supp.css"><link rel="stylesheet" href="/intelligence.css"></head>')
+        .replace('</body>', '<script src="/ops.js" defer></script><script src="/supp.js" defer></script><script src="/intelligence.js" defer></script></body>');
       return sendText(res, 200, 'text/html; charset=utf-8', html, "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     }
     if (req.method === 'GET' && req.url === '/app.js') return sendText(res, 200, 'text/javascript; charset=utf-8', appJs);
@@ -298,6 +299,8 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/ops.css') return sendText(res, 200, 'text/css; charset=utf-8', operationsCss);
     if (req.method === 'GET' && req.url === '/supp.js') return sendText(res, 200, 'text/javascript; charset=utf-8', supplementManagerJs);
     if (req.method === 'GET' && req.url === '/supp.css') return sendText(res, 200, 'text/css; charset=utf-8', supplementManagerCss);
+    if (req.method === 'GET' && req.url === '/intelligence.js') return sendText(res, 200, 'text/javascript; charset=utf-8', intelligenceWorkspaceJs);
+    if (req.method === 'GET' && req.url === '/intelligence.css') return sendText(res, 200, 'text/css; charset=utf-8', intelligenceWorkspaceCss);
     if (req.method === 'POST' && req.url === '/v1/integrations/claims-management/estimating-ready') {
       const secret = process.env.CLAIMS_MANAGEMENT_WEBHOOK_SECRET?.trim() || '';
       if (secret.length < 32) return send(res, 503, { error: 'claims_management_webhook_secret_unavailable' });
