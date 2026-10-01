@@ -5,7 +5,7 @@ import { EstimatingService } from '../application/estimating-service.js';
 import { InMemoryEstimateRepository } from '../persistence/memory.js';
 import { InMemoryImportReceiptRepository } from './import-repository.js';
 
-const principal={userId:'estimator-1',tenantId:'tenant-1',roles:['tenant_admin']};
+const principal={userId:'estimator-1',tenantId:'tenant-1',roles:['tenant_admin'] as const};
 
 test('imports a governed CCC-style normalized estimate and is idempotent', async()=>{
  const estimates=new InMemoryEstimateRepository();
