@@ -130,3 +130,32 @@ test('estimator can persist accept or reject decisions for current completeness 
   const rows = await decisions.listByEstimate('tenant-a', estimate.id);
   assert.ok(rows.some(row => row.decisionType === 'completeness_finding'));
 });
+
+
+test('estimator can persist a DraftIQ line decision with evidence and revision binding', async () => {
+  const { estimate, decisions, service } = await setup();
+  const first = await service.decideDraftIQLine(estimator, estimate.id, {
+    lineIndex: 0,
+    component: 'front bumper cover',
+    operation: 'repair',
+    decision: 'accepted',
+    reason: 'Photo evidence and procedure reference support repair.',
+    evidenceRefs: ['photo-1','procedure-1'],
+    confidence: 0.91,
+  });
+  assert.equal(first.record.decisionType, 'draftiq_line');
+  assert.equal(first.record.estimateRevision, estimate.revision);
+  assert.equal((first.result as Record<string, unknown>).humanDecision, true);
+  const replay = await service.decideDraftIQLine(estimator, estimate.id, {
+    lineIndex: 0,
+    component: 'front bumper cover',
+    operation: 'repair',
+    decision: 'accepted',
+    reason: 'Photo evidence and procedure reference support repair.',
+    evidenceRefs: ['photo-1','procedure-1'],
+    confidence: 0.91,
+  });
+  assert.equal(replay.replayed, true);
+  const rows = await decisions.listByEstimate('tenant-a', estimate.id);
+  assert.ok(rows.some(row => row.decisionType === 'draftiq_line'));
+});
