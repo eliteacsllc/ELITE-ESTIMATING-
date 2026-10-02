@@ -18,10 +18,11 @@ import { buildEstimateCompletenessReview } from '../intelligence/estimate-comple
 export type PartsDecisionInput = { candidates: PartCandidate[]; policy: PartsOptimizationPolicy };
 export type RepairReplaceDecisionInput = { repair: RepairOption; replacement: ReplaceOption; policy: RepairReplacePolicy };
 export type CompletenessFindingDecisionInput = { code: string; decision: 'accepted' | 'rejected' | 'deferred'; reason: string; evidenceRefs?: string[] };
+export type DraftIQLineDecisionInput = { lineIndex: number; component: string; operation: string; decision: 'accepted' | 'rejected' | 'deferred'; reason: string; evidenceRefs?: string[]; confidence?: number };
 
 export type GovernedDecision<T> = { record: DecisionRecord; result: T; replayed: boolean };
 
-const FEATURE_BY_DECISION: Record<Exclude<DecisionType, 'completeness_finding'>, FeatureId> = {
+const FEATURE_BY_DECISION: Record<Exclude<DecisionType, 'completeness_finding' | 'draftiq_line'>, FeatureId> = {
   parts_optimization: 'parts_optimizer',
   repair_replace: 'repair_replace',
   total_loss: 'total_loss',
@@ -43,7 +44,7 @@ export class GovernedDecisionService {
     authorize(principal, 'estimate:read', principal.tenantId);
     const estimate = await this.estimates.getById(principal.tenantId, estimateId);
     if (!estimate) throw new Error('estimate_not_found');
-    if (decisionType !== 'completeness_finding') {
+    if (decisionType !== 'completeness_finding' && decisionType !== 'draftiq_line') {
       const profile = await this.entitlements.get(principal, estimate.asset.assetClass);
       const resolved = resolveEntitlements({ enabled: profile.enabledFeatures, automationLevel: profile.automationLevel }, estimate.asset.assetClass);
       assertFeatureEnabled(resolved, FEATURE_BY_DECISION[decisionType]);
@@ -125,6 +126,39 @@ export class GovernedDecisionService {
       humanDecision: true,
     };
     return this.persist(principal, estimate, 'completeness_finding', { code, decision: input.decision, reason, evidenceRefs }, result);
+  }
+
+  async decideDraftIQLine(principal: Principal, estimateId: string, input: DraftIQLineDecisionInput): Promise<GovernedDecision<Record<string, unknown>>> {
+    const estimate = await this.context(principal, estimateId, 'draftiq_line');
+    if (!Number.isInteger(input.lineIndex) || input.lineIndex < 0) throw new Error('draftiq_line_index_invalid');
+    const component = input.component?.trim();
+    const operation = input.operation?.trim();
+    const reason = input.reason?.trim();
+    if (!component) throw new Error('draftiq_component_required');
+    if (!operation) throw new Error('draftiq_operation_required');
+    if (!['accepted','rejected','deferred'].includes(input.decision)) throw new Error('draftiq_decision_invalid');
+    if (!reason || reason.length > 2000) throw new Error('draftiq_reason_required');
+    const evidenceRefs = [...new Set((input.evidenceRefs ?? []).map(value => value.trim()).filter(Boolean))].slice(0, 50);
+    const result = {
+      lineIndex: input.lineIndex,
+      component,
+      operation,
+      decision: input.decision,
+      reason,
+      evidenceRefs,
+      confidence: Number.isFinite(Number(input.confidence)) ? Number(input.confidence) : null,
+      humanDecision: true,
+      estimateRevision: estimate.revision,
+    };
+    return this.persist(principal, estimate, 'draftiq_line', {
+      lineIndex: input.lineIndex,
+      component,
+      operation,
+      decision: input.decision,
+      reason,
+      evidenceRefs,
+      confidence: result.confidence,
+    }, result);
   }
 
   async agentMeshPlan(principal: Principal, estimateId: string, input: AgentMeshPlanRequest): Promise<AgentMeshPlanView> {
