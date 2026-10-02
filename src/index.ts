@@ -14,6 +14,7 @@ export * from './connectors/estimatics.js';
 export * from './connectors/estimatics-client.js';
 export * from './connectors/estimatics-completeness.js';
 export * from './connectors/estimatics-receipts.js';
+export * from './connectors/qa-client.js';
 export * from './domains/registry.js';
 export * from './domains/asset-profiles.js';
 export * from './platform/features.js';
