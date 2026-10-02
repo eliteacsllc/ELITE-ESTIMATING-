@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildJumpStartDraft, jumpStartCanAdvanceToReview } from './jumpstart.js';
+import { buildDraftIQDraft, draftIqCanAdvanceToReview } from './draftiq.js';
 
-test('JumpStart keeps human approval and flags safety-critical work', () => {
-  const draft = buildJumpStartDraft({
+test('DraftIQ keeps human approval and flags safety-critical work', () => {
+  const draft = buildDraftIQDraft({
     requiredEvidenceKinds: ['photo', 'procedure'],
     now: new Date('2026-10-01T00:00:00Z'),
     candidates: [{
@@ -21,11 +21,11 @@ test('JumpStart keeps human approval and flags safety-critical work', () => {
   assert.equal(draft.requiresHumanApproval, true);
   assert.equal(draft.lines[0]?.status, 'needs-review');
   assert.deepEqual(draft.missingEvidence, []);
-  assert.equal(jumpStartCanAdvanceToReview(draft), true);
+  assert.equal(draftIqCanAdvanceToReview(draft), true);
 });
 
-test('JumpStart fails completeness when required evidence is absent', () => {
-  const draft = buildJumpStartDraft({
+test('DraftIQ fails completeness when required evidence is absent', () => {
+  const draft = buildDraftIQDraft({
     requiredEvidenceKinds: ['photo', 'procedure'],
     candidates: [{
       component: 'bumper cover',
@@ -36,5 +36,5 @@ test('JumpStart fails completeness when required evidence is absent', () => {
     }],
   });
   assert.deepEqual(draft.missingEvidence, ['missing_procedure']);
-  assert.equal(jumpStartCanAdvanceToReview(draft), false);
+  assert.equal(draftIqCanAdvanceToReview(draft), false);
 });
