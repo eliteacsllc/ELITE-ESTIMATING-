@@ -38,3 +38,28 @@ test('DraftIQ fails completeness when required evidence is absent', () => {
   assert.deepEqual(draft.missingEvidence, ['missing_procedure']);
   assert.equal(draftIqCanAdvanceToReview(draft), false);
 });
+
+
+test('DraftIQ flags missing labor and pricing provenance', () => {
+  const draft = buildDraftIQDraft({
+    candidates: [
+      {
+        component: 'quarter panel',
+        operation: 'repair',
+        description: 'Repair quarter panel',
+        confidence: 0.91,
+        evidence: [{ id: 'photo-1', kind: 'photo' }],
+      },
+      {
+        component: 'bumper cover',
+        operation: 'replace',
+        description: 'Replace bumper cover',
+        confidence: 0.92,
+        partPrice: 500,
+        evidence: [{ id: 'photo-2', kind: 'photo' }],
+      },
+    ],
+  });
+  assert.ok(draft.lines[0]?.reviewReasons.includes('labor_time_required'));
+  assert.ok(draft.lines[1]?.reviewReasons.includes('pricing_provenance_required'));
+});
