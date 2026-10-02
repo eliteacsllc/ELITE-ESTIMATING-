@@ -6,6 +6,7 @@ import { runValuationRequest, type ValuationHttpRequest } from '../valuation/htt
 import { CanonicalHttpComparableProvider, CanonicalHttpEvidenceCaptureProvider } from '../valuation/http-providers.js';
 import { searchComparablesWithExpansion } from '../valuation/provider.js';
 import { assetSearchPolicy, normalizeMultiAssetSubject, type MultiAssetSubject, type ValuationAssetClass } from '../valuation/multi-asset.js';
+import { buildJumpStartDraft, type BuildJumpStartInput } from '../intelligence/jumpstart.js';
 
 type Send = (res: ServerResponse, status: number, body: unknown, extra?: Record<string, string>) => void;
 type JsonReader = (req: IncomingMessage) => Promise<Record<string, unknown>>;
@@ -78,6 +79,19 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
 
   if (parts[0] !== 'v1' || parts[1] !== 'estimates' || !parts[2]) return false;
   const estimateId = parts[2];
+
+  if (parts[3] === 'jumpstart' && parts.length === 4 && req.method === 'POST') {
+    await service.get(actor, estimateId);
+    const body = await json(req);
+    const draft = buildJumpStartDraft(body as unknown as BuildJumpStartInput);
+    send(res, 200, {
+      estimateId,
+      draft,
+      nextAction: draft.missingEvidence.length ? 'collect_evidence' : 'human_review',
+    });
+    return true;
+  }
+
 
   if (parts[3] === 'repair-plan' && parts.length === 4) {
     if (req.method === 'GET') {
