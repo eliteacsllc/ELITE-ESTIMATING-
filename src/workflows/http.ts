@@ -6,8 +6,8 @@ import { runValuationRequest, type ValuationHttpRequest } from '../valuation/htt
 import { CanonicalHttpComparableProvider, CanonicalHttpEvidenceCaptureProvider } from '../valuation/http-providers.js';
 import { searchComparablesWithExpansion } from '../valuation/provider.js';
 import { assetSearchPolicy, normalizeMultiAssetSubject, type MultiAssetSubject, type ValuationAssetClass } from '../valuation/multi-asset.js';
-import { buildJumpStartDraft, type BuildJumpStartInput } from '../intelligence/jumpstart.js';
-import { reviewJumpStartWithQa } from '../connectors/qa-client.js';
+import { buildDraftIQDraft, type BuildDraftIQInput } from '../intelligence/draftiq.js';
+import { reviewDraftIQWithQa } from '../connectors/qa-client.js';
 
 type Send = (res: ServerResponse, status: number, body: unknown, extra?: Record<string, string>) => void;
 type JsonReader = (req: IncomingMessage) => Promise<Record<string, unknown>>;
@@ -81,22 +81,22 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
   if (parts[0] !== 'v1' || parts[1] !== 'estimates' || !parts[2]) return false;
   const estimateId = parts[2];
 
-  if (parts[3] === 'jumpstart' && parts.length === 4 && req.method === 'POST') {
+  if (parts[3] === 'draftiq' && parts.length === 4 && req.method === 'POST') {
     await service.get(actor, estimateId);
     const body = await json(req);
-    const draft = buildJumpStartDraft(body as unknown as BuildJumpStartInput);
+    const draft = buildDraftIQDraft(body as unknown as BuildDraftIQInput);
     const qaBaseUrl = process.env.ELITE_QA_URL?.trim();
     const qaToken = process.env.ELITE_QA_TOKEN?.trim();
-    const requireQa = process.env.ELITE_REQUIRE_JUMPSTART_QA === '1';
+    const requireQa = process.env.ELITE_REQUIRE_DRAFTIQ_QA === '1';
     let qa: unknown = { status: 'not_configured', requiresHumanApproval: true, findings: [] };
     if (qaBaseUrl && qaToken) {
-      qa = await reviewJumpStartWithQa(
+      qa = await reviewDraftIQWithQa(
         { baseUrl: qaBaseUrl, token: qaToken, tenantId: actor.tenantId },
         draft,
-        String(req.headers['x-request-id'] ?? `jumpstart-${estimateId}`),
+        String(req.headers['x-request-id'] ?? `draftiq-${estimateId}`),
       );
     } else if (requireQa) {
-      throw new Error('jumpstart_qa_not_configured');
+      throw new Error('draftiq_qa_not_configured');
     }
     send(res, 200, {
       estimateId,
