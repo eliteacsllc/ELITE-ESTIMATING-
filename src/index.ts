@@ -126,3 +126,4 @@ export * from './intelligence/intelligence-fabric-client.js';
 export * from './intelligence/labor-intelligence.js';
 export * from './intelligence/draftiq.js';
 export * from './integrations/damage-iq-draftiq.js';
+export * from './intelligence/estimate-guidance.js';
