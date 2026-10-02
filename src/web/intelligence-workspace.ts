@@ -46,11 +46,31 @@ export const intelligenceWorkspaceJs = `(() => {
       globalThis.__eliteDraftIQ=result.draft;
       const target=document.querySelector('#intelContext');
       const draft=result.draft;
-      target.innerHTML='<div class="intelStatus '+(draft.missingEvidence?.length?'blocked':'needs_review')+'">DRAFTIQ · '+(draft.missingEvidence?.length?'EVIDENCE REQUIRED':'HUMAN REVIEW REQUIRED')+'</div>'+
+      const knowledgeItems=result.estimatics?.envelope?.items||[];
+      const qaStatus=result.qa?.status||'not_configured';
+      const knowledgeStatus=result.estimatics?.status||'not_configured';
+      target.innerHTML='<div class="intelStatus '+((result.nextAction||'').includes('evidence')||qaStatus==='blocked'?'blocked':'needs_review')+'">DRAFTIQ · '+escLocal(String(result.nextAction||'human_review').replaceAll('_',' ').toUpperCase())+'</div>'+
         '<div class="intelFieldLink">Preliminary only. No DraftIQ line becomes approved until a qualified reviewer accepts the supporting evidence.</div>'+
-        (draft.lines||[]).map((x,i)=>'<div class="intelEvidenceItem"><b>'+escLocal((i+1)+'. '+x.component+' · '+x.operation)+'</b><small>'+Math.round(Number(x.confidence||0)*100)+'% confidence · '+escLocal(x.status)+' · '+escLocal((x.reviewReasons||[]).join(' • ')||'evidence ready')+'</small></div>').join('')+
-        ((draft.missingEvidence||[]).length?'<div class="intelFinding" data-severity="blocker"><b>Missing evidence</b><p>'+escLocal(draft.missingEvidence.join(' • '))+'</p></div>':'');
-      openTab();note('DraftIQ preliminary draft generated. Human review remains required.');
+        '<div class="intelEvidenceItem"><b>Governed knowledge</b><small>Estimatics: '+escLocal(knowledgeStatus)+' · '+knowledgeItems.length+' source-backed record(s) · QA: '+escLocal(qaStatus)+'</small></div>'+
+        (draft.lines||[]).map((x,i)=>'<div class="intelEvidenceItem" data-draftiq-line="'+i+'"><b>'+escLocal((i+1)+'. '+x.component+' · '+x.operation)+'</b><small>'+Math.round(Number(x.confidence||0)*100)+'% confidence · '+escLocal(x.status)+' · '+escLocal((x.reviewReasons||[]).join(' • ')||'evidence ready')+'</small><input data-draftiq-reason placeholder="Reviewer reason / evidence note"><div class="intelButtons"><button class="secondary" data-draftiq-decision="accepted" data-index="'+i+'">Accept</button><button class="secondary" data-draftiq-decision="rejected" data-index="'+i+'">Reject</button><button class="secondary" data-draftiq-decision="deferred" data-index="'+i+'">Defer</button></div></div>').join('')+
+        ((draft.missingEvidence||[]).length?'<div class="intelFinding" data-severity="blocker"><b>Missing evidence</b><p>'+escLocal(draft.missingEvidence.join(' • '))+'</p></div>':'')+
+        (knowledgeItems.length?'<div class="intelEvidenceItem"><b>Estimatics evidence ready for review</b><small>'+escLocal(knowledgeItems.map(x=>x.title).slice(0,5).join(' • '))+'</small></div>':'');
+      target.querySelectorAll('[data-draftiq-decision]').forEach(btn=>btn.onclick=()=>recordDraftIQDecision(btn.dataset.draftiqDecision,Number(btn.dataset.index)));
+      openTab();note('DraftIQ preliminary draft generated with Estimatics and QA context. Human review remains required.');
+    }catch(e){note(e.message,true)}
+  }
+  async function recordDraftIQDecision(decision,index){
+    const line=globalThis.__eliteDraftIQ?.lines?.[index];if(!line)return;
+    const card=document.querySelector('[data-draftiq-line="'+index+'"]');
+    const reason=card?.querySelector('[data-draftiq-reason]')?.value?.trim();
+    if(!reason)return note('Enter a reviewer reason before recording the DraftIQ decision.',true);
+    const evidenceRefs=(line.evidence||[]).map(item=>String(item.id)).filter(Boolean);
+    try{
+      const result=await api('/v1/estimates/'+estimate.id+'/decisions/draftiq-line',{method:'POST',body:JSON.stringify({
+        lineIndex:index,component:line.component,operation:line.operation,decision,reason,evidenceRefs,confidence:line.confidence
+      })});
+      card?.setAttribute('data-review-state',decision);
+      note('DraftIQ line '+(index+1)+' '+decision+(result.replayed?' (existing decision replayed).':'.'));
     }catch(e){note(e.message,true)}
   }
   async function loadReview(){
