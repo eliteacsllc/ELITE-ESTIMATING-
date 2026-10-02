@@ -43,15 +43,27 @@ export interface BuildDraftIQInput {
 
 export function buildDraftIQDraft(input: BuildDraftIQInput): DraftIQDraft {
   const threshold = input.minimumConfidence ?? 0.8;
+  if (!Array.isArray(input.candidates)) throw new Error('draftiq_candidates_array_required');
   const lines = input.candidates.map((candidate) => {
+    if (!candidate?.component?.trim()) throw new Error('draftiq_component_required');
+    if (!candidate?.description?.trim()) throw new Error('draftiq_description_required');
+    if (!Number.isFinite(candidate.confidence) || candidate.confidence < 0 || candidate.confidence > 1) throw new Error('draftiq_confidence_invalid');
+    const evidence = Array.isArray(candidate.evidence) ? candidate.evidence : [];
     const reviewReasons: string[] = [];
     if (candidate.confidence < threshold) reviewReasons.push('confidence_below_threshold');
-    if (candidate.evidence.length === 0) reviewReasons.push('missing_supporting_evidence');
-    if (candidate.safetyCritical) reviewReasons.push('safety_critical_operation');
+    if (evidence.length === 0) reviewReasons.push('missing_supporting_evidence');
+    if (['repair','refinish','r&i'].includes(candidate.operation) && !Number.isFinite(candidate.laborHours)) reviewReasons.push('labor_time_required');
+    if (candidate.operation === 'replace' && !Number.isFinite(candidate.partPrice)) reviewReasons.push('part_pricing_required');
+    if (Number.isFinite(candidate.partPrice) && !evidence.some((item) => item.kind === 'pricing')) reviewReasons.push('pricing_provenance_required');
+    if (candidate.safetyCritical) {
+      reviewReasons.push('safety_critical_operation');
+      if (!evidence.some((item) => item.kind === 'procedure')) reviewReasons.push('safety_procedure_required');
+    }
     return {
       ...candidate,
+      evidence,
       status: reviewReasons.length ? 'needs-review' as const : 'suggested' as const,
-      reviewReasons,
+      reviewReasons: [...new Set(reviewReasons)],
     };
   });
 
