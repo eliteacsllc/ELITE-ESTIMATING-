@@ -3,7 +3,7 @@ import type { Principal } from '../security/rbac.js';
 import type { TotalLossInput } from '../engine/total-loss.js';
 import type { FeatureId } from '../platform/features.js';
 import type { MeshCriticality } from '../agents/mesh.js';
-import type { GovernedDecisionService, PartsDecisionInput, RepairReplaceDecisionInput, CompletenessFindingDecisionInput } from './service.js';
+import type { GovernedDecisionService, PartsDecisionInput, RepairReplaceDecisionInput, CompletenessFindingDecisionInput, DraftIQLineDecisionInput } from './service.js';
 
 type Send = (res: ServerResponse, status: number, body: unknown, extra?: Record<string, string>) => void;
 type JsonReader = (req: IncomingMessage) => Promise<Record<string, unknown>>;
@@ -54,7 +54,9 @@ export async function handleDecisionHttp(context: DecisionHttpContext): Promise<
         ? await service.totalLoss(actor, estimateId, body as unknown as TotalLossInput)
         : endpoint === 'completeness-finding'
           ? await service.decideCompletenessFinding(actor, estimateId, body as unknown as CompletenessFindingDecisionInput)
-          : null;
+          : endpoint === 'draftiq-line'
+            ? await service.decideDraftIQLine(actor, estimateId, body as unknown as DraftIQLineDecisionInput)
+            : null;
   if (!result) return false;
   send(res, result.replayed ? 200 : 201, result, { 'idempotency-replayed': String(result.replayed) });
   return true;
