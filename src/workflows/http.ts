@@ -11,6 +11,10 @@ import { reviewDraftIQWithQa, type DraftIQQaResult } from '../connectors/qa-clie
 import { queryEstimatics } from '../connectors/estimatics-client.js';
 import { buildEstimaticsCompletenessQuery } from '../connectors/estimatics-completeness.js';
 import { assessEstimaticsEnvelope, type EstimaticsEnvelope, type EstimaticsDecision } from '../connectors/estimatics.js';
+import { damageIqCandidatesToDraftIQ, type DamageIqDraftCandidate } from '../integrations/damage-iq-draftiq.js';
+import { buildEstimateCompletenessReview } from '../intelligence/estimate-completeness.js';
+import { buildSupplementReviewDraft } from '../intelligence/supplement-review-draft.js';
+import { analyzeTotalLoss, type TotalLossInput } from '../engine/total-loss.js';
 
 type Send = (res: ServerResponse, status: number, body: unknown, extra?: Record<string, string>) => void;
 type JsonReader = (req: IncomingMessage) => Promise<Record<string, unknown>>;
@@ -87,7 +91,16 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
   if (parts[3] === 'draftiq' && parts.length === 4 && req.method === 'POST') {
     const estimate = await service.get(actor, estimateId);
     const body = await json(req);
-    const draft = buildDraftIQDraft(body as unknown as BuildDraftIQInput);
+    const damageIqCandidates = Array.isArray(body.damageIqCandidates)
+      ? body.damageIqCandidates as unknown as DamageIqDraftCandidate[]
+      : null;
+    const draftInput: BuildDraftIQInput = {
+      ...(body as unknown as BuildDraftIQInput),
+      candidates: damageIqCandidates
+        ? damageIqCandidatesToDraftIQ(damageIqCandidates)
+        : ((body.candidates ?? []) as unknown as BuildDraftIQInput['candidates']),
+    };
+    const draft = buildDraftIQDraft(draftInput);
     const requestId = String(req.headers['x-request-id'] ?? `draftiq-${estimateId}-r${estimate.revision}`);
 
     const estimaticsBaseUrl = process.env.ELITE_ESTIMATICS_SERVICE_URL?.trim();
@@ -121,6 +134,18 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
       throw new Error('draftiq_qa_not_configured');
     }
 
+    const completeness = buildEstimateCompletenessReview(estimate);
+    const supplementReview = buildSupplementReviewDraft(estimate);
+    let totalLossSignal: ReturnType<typeof analyzeTotalLoss> | null = null;
+    if (body.totalLossInput && typeof body.totalLossInput === 'object' && !Array.isArray(body.totalLossInput)) {
+      const requested = body.totalLossInput as unknown as TotalLossInput;
+      totalLossSignal = analyzeTotalLoss({
+        ...requested,
+        currency: estimate.currency,
+        repairCost: estimate.total,
+      });
+    }
+
     const evidenceBlocked = Boolean(estimatics.decision?.blocked) || draft.missingEvidence.length > 0;
     const qaBlocked = qa.status === 'blocked';
     send(res, 200, {
@@ -129,7 +154,14 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
       draft,
       estimatics,
       qa,
-      nextAction: evidenceBlocked || qaBlocked ? 'collect_or_resolve_evidence' : 'human_review',
+      completeness,
+      supplementReview,
+      totalLossSignal,
+      nextAction: evidenceBlocked || qaBlocked
+        ? 'collect_or_resolve_evidence'
+        : totalLossSignal?.recommendation === 'total_loss_indicator'
+          ? 'valuation_review'
+          : 'human_review',
       canApprove: false,
       requiresHumanApproval: true,
     });
