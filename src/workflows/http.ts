@@ -7,7 +7,10 @@ import { CanonicalHttpComparableProvider, CanonicalHttpEvidenceCaptureProvider }
 import { searchComparablesWithExpansion } from '../valuation/provider.js';
 import { assetSearchPolicy, normalizeMultiAssetSubject, type MultiAssetSubject, type ValuationAssetClass } from '../valuation/multi-asset.js';
 import { buildDraftIQDraft, type BuildDraftIQInput } from '../intelligence/draftiq.js';
-import { reviewDraftIQWithQa } from '../connectors/qa-client.js';
+import { reviewDraftIQWithQa, type DraftIQQaResult } from '../connectors/qa-client.js';
+import { queryEstimatics } from '../connectors/estimatics-client.js';
+import { buildEstimaticsCompletenessQuery } from '../connectors/estimatics-completeness.js';
+import { assessEstimaticsEnvelope, type EstimaticsEnvelope, type EstimaticsDecision } from '../connectors/estimatics.js';
 
 type Send = (res: ServerResponse, status: number, body: unknown, extra?: Record<string, string>) => void;
 type JsonReader = (req: IncomingMessage) => Promise<Record<string, unknown>>;
@@ -82,27 +85,53 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
   const estimateId = parts[2];
 
   if (parts[3] === 'draftiq' && parts.length === 4 && req.method === 'POST') {
-    await service.get(actor, estimateId);
+    const estimate = await service.get(actor, estimateId);
     const body = await json(req);
     const draft = buildDraftIQDraft(body as unknown as BuildDraftIQInput);
+    const requestId = String(req.headers['x-request-id'] ?? `draftiq-${estimateId}-r${estimate.revision}`);
+
+    const estimaticsBaseUrl = process.env.ELITE_ESTIMATICS_SERVICE_URL?.trim();
+    const estimaticsToken = process.env.ELITE_ESTIMATICS_SERVICE_TOKEN?.trim();
+    const requireEstimatics = process.env.ELITE_REQUIRE_DRAFTIQ_ESTIMATICS === '1';
+    let estimatics: { status: string; query?: unknown; envelope?: EstimaticsEnvelope; decision?: EstimaticsDecision } = { status: 'not_configured' };
+    if (estimaticsBaseUrl && estimaticsToken) {
+      const query = buildEstimaticsCompletenessQuery(estimate);
+      const envelope = await queryEstimatics(
+        { baseUrl: estimaticsBaseUrl, token: estimaticsToken, tenantId: actor.tenantId },
+        query,
+        requestId,
+      );
+      const decision = assessEstimaticsEnvelope(envelope, actor.tenantId);
+      estimatics = { status: decision.blocked ? 'blocked' : decision.requiresHumanReview ? 'review' : 'ready', query, envelope, decision };
+    } else if (requireEstimatics) {
+      throw new Error('draftiq_estimatics_not_configured');
+    }
+
     const qaBaseUrl = process.env.ELITE_QA_URL?.trim();
     const qaToken = process.env.ELITE_QA_TOKEN?.trim();
     const requireQa = process.env.ELITE_REQUIRE_DRAFTIQ_QA === '1';
-    let qa: unknown = { status: 'not_configured', requiresHumanApproval: true, findings: [] };
+    let qa: DraftIQQaResult = { status: 'not_configured', requiresHumanApproval: true, findings: [] };
     if (qaBaseUrl && qaToken) {
       qa = await reviewDraftIQWithQa(
         { baseUrl: qaBaseUrl, token: qaToken, tenantId: actor.tenantId },
         draft,
-        String(req.headers['x-request-id'] ?? `draftiq-${estimateId}`),
+        requestId,
       );
     } else if (requireQa) {
       throw new Error('draftiq_qa_not_configured');
     }
+
+    const evidenceBlocked = Boolean(estimatics.decision?.blocked) || draft.missingEvidence.length > 0;
+    const qaBlocked = qa.status === 'blocked';
     send(res, 200, {
       estimateId,
+      estimateRevision: estimate.revision,
       draft,
+      estimatics,
       qa,
-      nextAction: draft.missingEvidence.length ? 'collect_evidence' : 'human_review',
+      nextAction: evidenceBlocked || qaBlocked ? 'collect_or_resolve_evidence' : 'human_review',
+      canApprove: false,
+      requiresHumanApproval: true,
     });
     return true;
   }
