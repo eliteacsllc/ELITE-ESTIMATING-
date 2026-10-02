@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 
-export type DecisionType = 'parts_optimization' | 'repair_replace' | 'total_loss' | 'completeness_finding';
+export type DecisionType = 'parts_optimization' | 'repair_replace' | 'total_loss' | 'completeness_finding' | 'draftiq_line';
 
 export type DecisionRecord = {
   tenantId: string;
