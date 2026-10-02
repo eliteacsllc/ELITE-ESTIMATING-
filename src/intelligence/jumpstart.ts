@@ -1,47 +1,47 @@
-export type JumpStartOperation = 'repair' | 'replace' | 'r&i' | 'refinish' | 'inspect' | 'calibrate' | 'scan' | 'other';
+export type DraftIQOperation = 'repair' | 'replace' | 'r&i' | 'refinish' | 'inspect' | 'calibrate' | 'scan' | 'other';
 
-export interface JumpStartEvidenceRef {
+export interface DraftIQEvidenceRef {
   id: string;
   kind: 'photo' | 'video' | 'document' | 'measurement' | 'procedure' | 'pricing' | 'observation';
   source?: string;
 }
 
-export interface JumpStartCandidate {
+export interface DraftIQCandidate {
   component: string;
-  operation: JumpStartOperation;
+  operation: DraftIQOperation;
   description: string;
   laborHours?: number;
   partNumber?: string;
   partPrice?: number;
   confidence: number;
-  evidence: JumpStartEvidenceRef[];
+  evidence: DraftIQEvidenceRef[];
   safetyCritical?: boolean;
   rationale?: string[];
 }
 
-export interface JumpStartDraftLine extends JumpStartCandidate {
+export interface DraftIQDraftLine extends DraftIQCandidate {
   status: 'suggested' | 'needs-review';
   reviewReasons: string[];
 }
 
-export interface JumpStartDraft {
+export interface DraftIQDraft {
   version: '1.0';
   mode: 'preliminary';
   generatedAt: string;
   confidence: number;
-  lines: JumpStartDraftLine[];
+  lines: DraftIQDraftLine[];
   missingEvidence: string[];
   requiresHumanApproval: true;
 }
 
-export interface BuildJumpStartInput {
-  candidates: JumpStartCandidate[];
-  requiredEvidenceKinds?: JumpStartEvidenceRef['kind'][];
+export interface BuildDraftIQInput {
+  candidates: DraftIQCandidate[];
+  requiredEvidenceKinds?: DraftIQEvidenceRef['kind'][];
   minimumConfidence?: number;
   now?: Date;
 }
 
-export function buildJumpStartDraft(input: BuildJumpStartInput): JumpStartDraft {
+export function buildDraftIQDraft(input: BuildDraftIQInput): DraftIQDraft {
   const threshold = input.minimumConfidence ?? 0.8;
   const lines = input.candidates.map((candidate) => {
     const reviewReasons: string[] = [];
@@ -75,6 +75,6 @@ export function buildJumpStartDraft(input: BuildJumpStartInput): JumpStartDraft 
   };
 }
 
-export function jumpStartCanAdvanceToReview(draft: JumpStartDraft): boolean {
+export function draftIqCanAdvanceToReview(draft: DraftIQDraft): boolean {
   return draft.lines.length > 0 && draft.missingEvidence.length === 0;
 }
