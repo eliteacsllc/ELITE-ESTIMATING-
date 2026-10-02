@@ -124,4 +124,4 @@ export * from './integrations/claims-handoff-context.js';
 export * from './valuation/market-evidence.js';
 export * from './intelligence/intelligence-fabric-client.js';
 export * from './intelligence/labor-intelligence.js';
-export * from './intelligence/jumpstart.js';
+export * from './intelligence/draftiq.js';
