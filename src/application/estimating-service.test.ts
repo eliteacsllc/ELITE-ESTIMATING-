@@ -6,6 +6,7 @@ import type { Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
 import type { RepairPlanningChecklist } from '../workflows/repair-planning.js';
 import { createDomainWorkflow, updateDomainWorkflowStep } from '../workflows/domain-workflow.js';
+import { MemoryLifecycleSink } from '../integrations/outbox.js';
 
 const estimator: Principal = { userId: 'u1', tenantId: 'tenant-a', roles: ['estimator'] };
 const reviewer: Principal = { userId: 'u2', tenantId: 'tenant-a', roles: ['reviewer'] };
@@ -85,4 +86,16 @@ test('attached domain workflow becomes an approval gate', async () => {
   await service.replaceDomainWorkflow(estimator, estimate.id, workflow);
   const approved = await service.approve(reviewer, estimate.id);
   assert.equal(approved.status, 'approved');
+});
+
+
+test('DraftIQ status emits through the lifecycle outbox with claim context', async () => {
+  const sink = new MemoryLifecycleSink();
+  const service = new EstimatingService(new InMemoryEstimateRepository(), [], undefined, sink);
+  const estimate = await service.create(estimator, { tenantId: 'tenant-a', claimId: 'claim-1', asset: { assetClass: 'passenger_vehicle' }, locale: 'en-US', currency: 'USD', jurisdiction: 'US' });
+  await service.recordDraftIQStatus(estimator, estimate.id, 'review_required', { lineCount: 2, confidence: 0.88 });
+  const event = sink.events.find(row => row.topic === 'estimate.draftiq.review_required');
+  assert.ok(event);
+  assert.equal(event?.payload.claimId, 'claim-1');
+  assert.equal(event?.payload.lineCount, 2);
 });
