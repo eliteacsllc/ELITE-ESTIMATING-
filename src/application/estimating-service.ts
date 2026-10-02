@@ -57,6 +57,17 @@ export class EstimatingService {
     await this.lifecycle.emit(lifecycleEvent({ tenantId: estimate.tenantId, topic, aggregateType: 'estimate', aggregateId: estimate.id, payload: { estimateId: estimate.id, claimId: estimate.claimId ?? null, revision: estimate.revision, status: estimate.status, ...payload }, idempotencyKey: `${topic}:${estimate.tenantId}:${estimate.id}:r${estimate.revision}:${estimate.updatedAt}` }));
   }
 
+  async recordDraftIQStatus(
+    principal: Principal,
+    id: string,
+    status: 'drafted' | 'evidence_required' | 'review_required' | 'valuation_review',
+    payload: Record<string, unknown> = {},
+  ): Promise<void> {
+    const estimate = await this.get(principal, id);
+    const topic = ('estimate.draftiq.' + status) as LifecycleTopic;
+    await this.record(principal, topic, estimate, payload);
+    await this.emit(topic, estimate, payload);
+  }
   async create(principal: Principal, input: CreateEstimateInput): Promise<Estimate> {
     authorize(principal, 'estimate:create', input.tenantId);
     const currency = input.currency.toUpperCase();
