@@ -44,5 +44,56 @@
     "registryTokenEnv": "ELITE_SERVICE_REGISTRY_TOKEN",
     "directUrlWins": true,
     "registryOptional": true
+  },
+  "standardRef": "eliteacsllc/elite-sdk:contracts/standalone-integration-standard.v1.json",
+  "integrationRequirements": {
+    "api": {
+      "required": true,
+      "versioned": true,
+      "openapi": true,
+      "health": true,
+      "readiness": true
+    },
+    "identity": {
+      "oauth2Oidc": true,
+      "workloadIdentity": true,
+      "tenantContext": true,
+      "rbac": true
+    },
+    "events": {
+      "required": true,
+      "versioned": true,
+      "correlationId": true,
+      "idempotency": true,
+      "deadLetter": true
+    },
+    "sdk": {
+      "required": true,
+      "package": "@elite/sdk",
+      "providerNeutral": true
+    },
+    "data": {
+      "serviceOwned": true,
+      "noSharedDatabaseByDefault": true,
+      "explicitContracts": true
+    },
+    "resilience": {
+      "timeouts": true,
+      "boundedRetries": true,
+      "circuitBreaking": true,
+      "gracefulDegradation": true
+    },
+    "observability": {
+      "structuredLogs": true,
+      "metrics": true,
+      "traces": true,
+      "correlationPropagation": true
+    }
+  },
+  "maturity": {
+    "declared": true,
+    "sourceVerified": false,
+    "runtimeVerified": false,
+    "level": "UNVERIFIED"
   }
 }
