@@ -148,6 +148,26 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
 
     const evidenceBlocked = Boolean(estimatics.decision?.blocked) || draft.missingEvidence.length > 0;
     const qaBlocked = qa.status === 'blocked';
+    const nextAction = evidenceBlocked || qaBlocked
+      ? 'collect_or_resolve_evidence'
+      : totalLossSignal?.recommendation === 'total_loss_indicator'
+        ? 'valuation_review'
+        : 'human_review';
+    const lifecycleStatus = nextAction === 'collect_or_resolve_evidence'
+      ? 'evidence_required'
+      : nextAction === 'valuation_review'
+        ? 'valuation_review'
+        : draft.lines.some((line) => line.status === 'needs-review') || qa.status === 'review'
+          ? 'review_required'
+          : 'drafted';
+    await service.recordDraftIQStatus(actor, estimateId, lifecycleStatus, {
+      lineCount: draft.lines.length,
+      confidence: draft.confidence,
+      qaStatus: qa.status,
+      estimaticsStatus: estimatics.status,
+      nextAction,
+      totalLossRecommendation: totalLossSignal?.recommendation ?? null,
+    });
     send(res, 200, {
       estimateId,
       estimateRevision: estimate.revision,
@@ -157,11 +177,8 @@ export async function handleEstimateWorkflowHttp(context: WorkflowHttpContext): 
       completeness,
       supplementReview,
       totalLossSignal,
-      nextAction: evidenceBlocked || qaBlocked
-        ? 'collect_or_resolve_evidence'
-        : totalLossSignal?.recommendation === 'total_loss_indicator'
-          ? 'valuation_review'
-          : 'human_review',
+      nextAction,
+      lifecycleStatus,
       canApprove: false,
       requiresHumanApproval: true,
     });
