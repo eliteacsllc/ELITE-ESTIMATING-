@@ -8,7 +8,7 @@ export const intelligenceWorkspaceJs = `(() => {
   const tab=document.createElement('button');tab.className='tab';tab.dataset.tab='completeness';tab.textContent='Completeness';
   const auditTab=tabs.querySelector('[data-tab="audit"]');tabs.insertBefore(tab,auditTab||null);
   const pane=document.createElement('section');pane.className='tabPane';pane.id='pane-completeness';
-  pane.innerHTML='<div class="intelShell"><div class="intelToolbar"><div><div class="eyebrow">ESTIMATE INTELLIGENCE WORKSPACE</div><h2>Find gaps → verify evidence → decide → supplement → field capture → QA</h2><p>Provider-neutral and asset-neutral. Suggestions remain human-governed and source-backed.</p></div><div class="intelActions"><button id="intelRefresh" class="secondary">Refresh review</button><button id="intelEvidence" class="secondary">Resolve with Estimatics</button><button id="intelDraft" class="secondary">Supplement draft</button></div></div><div id="intelSummary" class="intelSummary"></div><div class="intelGrid"><div class="intelCard intelImport"><h3>IMPORT STRUCTURED ESTIMATE</h3><div class="split"><label>Provider<select id="intelProvider"><option value="ccc">CCC</option><option value="mitchell">Mitchell</option><option value="audatex">Audatex</option><option value="other">Other</option></select></label><label>Source estimate ID<input id="intelSourceId" placeholder="External estimate ID"></label></div><input id="intelFile" class="intelFile" type="file" accept=".json,application/json"><div class="intelButtons"><button id="intelChooseFile" class="secondary">Choose JSON</button><button id="intelImportBtn" class="primary">Import + Analyze</button></div><textarea id="intelPayload" spellcheck="false" placeholder=\'Paste normalized provider export JSON: {"asset":{...},"currency":"USD","jurisdiction":"MD","lines":[...]}\'></textarea><div class="intelFieldLink">PDF/image ingestion should enter through governed document ingestion before normalization; this screen does not pretend raw PDFs are structured data.</div></div><div class="intelCard"><h3>COMPLETENESS FINDINGS</h3><div id="intelFindings" class="intelList"><div class="intelEmpty">Load an estimate to review completeness.</div></div></div><div class="intelCard"><h3>EVIDENCE / SUPPLEMENT CONTEXT</h3><div id="intelContext" class="intelList"><div class="intelEmpty">Select Refresh, Resolve with Estimatics, or Supplement draft.</div></div></div></div></div>';
+  pane.innerHTML='<div class="intelShell"><div class="intelToolbar"><div><div class="eyebrow">ESTIMATE INTELLIGENCE WORKSPACE</div><h2>Find gaps → verify evidence → decide → supplement → field capture → QA</h2><p>Provider-neutral and asset-neutral. Suggestions remain human-governed and source-backed.</p></div><div class="intelActions"><button id="intelJumpStart" class="primary">Generate JumpStart</button><button id="intelRefresh" class="secondary">Refresh review</button><button id="intelEvidence" class="secondary">Resolve with Estimatics</button><button id="intelDraft" class="secondary">Supplement draft</button></div></div><div id="intelSummary" class="intelSummary"></div><div class="intelGrid"><div class="intelCard intelImport"><h3>IMPORT STRUCTURED ESTIMATE</h3><div class="split"><label>Provider<select id="intelProvider"><option value="ccc">CCC</option><option value="mitchell">Mitchell</option><option value="audatex">Audatex</option><option value="other">Other</option></select></label><label>Source estimate ID<input id="intelSourceId" placeholder="External estimate ID"></label></div><input id="intelFile" class="intelFile" type="file" accept=".json,application/json"><div class="intelButtons"><button id="intelChooseFile" class="secondary">Choose JSON</button><button id="intelImportBtn" class="primary">Import + Analyze</button></div><textarea id="intelPayload" spellcheck="false" placeholder=\'Paste normalized provider export JSON: {"asset":{...},"currency":"USD","jurisdiction":"MD","lines":[...]}\'></textarea><div class="intelFieldLink">PDF/image ingestion should enter through governed document ingestion before normalization; this screen does not pretend raw PDFs are structured data.</div></div><div class="intelCard"><h3>COMPLETENESS FINDINGS</h3><div id="intelFindings" class="intelList"><div class="intelEmpty">Load an estimate to review completeness.</div></div></div><div class="intelCard"><h3>EVIDENCE / SUPPLEMENT CONTEXT</h3><div id="intelContext" class="intelList"><div class="intelEmpty">Select Refresh, Resolve with Estimatics, or Supplement draft.</div></div></div></div></div>';
   main.appendChild(pane);
 
   function openTab(){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===tab));document.querySelectorAll('.tabPane').forEach(x=>x.classList.toggle('active',x===pane))}
@@ -24,6 +24,34 @@ export const intelligenceWorkspaceJs = `(() => {
     const target=document.querySelector('#intelFindings'),items=review.candidates||[];
     target.innerHTML=items.length?items.map((f,i)=>'<article class="intelFinding" data-severity="'+escLocal(f.severity)+'"><div class="intelFindingHead"><b>'+escLocal(f.title)+'</b><span>'+escLocal(f.severity).toUpperCase()+' · '+Math.round(Number(f.confidence||0)*100)+'%</span></div><p>'+escLocal(f.reason)+'</p><div class="intelEvidence"><strong>Evidence:</strong> '+escLocal((f.evidenceRequired||[]).join(' • ')||'Human review')+'</div><div class="intelDecision"><span class="intelSourceMode">'+escLocal(f.sourceMode||'review')+'</span> · '+escLocal(f.code)+'</div><input data-reason placeholder="Decision reason / evidence note"><div class="intelButtons"><button class="secondary" data-decision="accepted" data-index="'+i+'">Accept</button><button class="secondary" data-decision="rejected" data-index="'+i+'">Reject</button><button class="secondary" data-decision="deferred" data-index="'+i+'">Defer</button></div></article>').join(''):'<div class="intelEmpty">No unresolved completeness findings.</div>';
     target.querySelectorAll('[data-decision]').forEach(btn=>btn.onclick=()=>recordDecision(btn.dataset.decision,Number(btn.dataset.index)));
+  }
+  async function generateJumpStart(){
+    if(!estimate)return note('Load an estimate first.',true);
+    const candidates=(lines||[]).map((line,i)=>({
+      component:line.component||line.description||('Line '+(i+1)),
+      operation:String(line.operation||'inspect').toLowerCase(),
+      description:line.description||line.component||'JumpStart candidate',
+      laborHours:Number(line.laborHours||line.hours||0)||undefined,
+      partPrice:Number(line.partPrice||line.partCost||0)||undefined,
+      confidence:Number(line.aiConfidence||line.confidence||0.82),
+      safetyCritical:Boolean(line.safetyCritical||line.adasRequired),
+      evidence:(line.provenance||line.procedureRef)?[
+        ...(line.provenance?[{id:String(line.provenance),kind:'observation'}]:[]),
+        ...(line.procedureRef?[{id:String(line.procedureRef),kind:'procedure'}]:[])
+      ]:[]
+    }));
+    if(!candidates.length)return note('Add or import estimate evidence/lines before generating JumpStart.',true);
+    try{
+      const result=await api('/v1/estimates/'+estimate.id+'/jumpstart',{method:'POST',body:JSON.stringify({candidates,requiredEvidenceKinds:['photo'],minimumConfidence:0.8})});
+      globalThis.__eliteJumpStart=result.draft;
+      const target=document.querySelector('#intelContext');
+      const draft=result.draft;
+      target.innerHTML='<div class="intelStatus '+(draft.missingEvidence?.length?'blocked':'needs_review')+'">JUMPSTART · '+(draft.missingEvidence?.length?'EVIDENCE REQUIRED':'HUMAN REVIEW REQUIRED')+'</div>'+
+        '<div class="intelFieldLink">Preliminary only. No JumpStart line becomes approved until a qualified reviewer accepts the supporting evidence.</div>'+
+        (draft.lines||[]).map((x,i)=>'<div class="intelEvidenceItem"><b>'+escLocal((i+1)+'. '+x.component+' · '+x.operation)+'</b><small>'+Math.round(Number(x.confidence||0)*100)+'% confidence · '+escLocal(x.status)+' · '+escLocal((x.reviewReasons||[]).join(' • ')||'evidence ready')+'</small></div>').join('')+
+        ((draft.missingEvidence||[]).length?'<div class="intelFinding" data-severity="blocker"><b>Missing evidence</b><p>'+escLocal(draft.missingEvidence.join(' • '))+'</p></div>':'');
+      openTab();note('JumpStart preliminary draft generated. Human review remains required.');
+    }catch(e){note(e.message,true)}
   }
   async function loadReview(){
     if(!estimate)return note('Load an estimate first.',true);
@@ -51,6 +79,7 @@ export const intelligenceWorkspaceJs = `(() => {
     const request={provider,sourceEstimateId,claimId:payload.claimId,asset:payload.asset,locale:payload.locale,currency:payload.currency||'USD',jurisdiction:payload.jurisdiction||'US',lines:payload.lines||[]};
     try{const result=await api('/v1/imports/external-estimate',{method:'POST',body:JSON.stringify(request)});estimate=result.estimate;lines=estimate.lines||[];if(typeof render==='function')render();if(typeof renderInspector==='function')renderInspector(null);renderReview(result.completeness);note((result.idempotent?'Re-opened':'Imported')+' '+provider.toUpperCase()+' estimate and ran completeness review.');}catch(e){note(e.message,true)}
   }
+  document.querySelector('#intelJumpStart').onclick=generateJumpStart;
   document.querySelector('#intelRefresh').onclick=loadReview;
   document.querySelector('#intelEvidence').onclick=loadEvidence;
   document.querySelector('#intelDraft').onclick=loadDraft;
