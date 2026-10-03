@@ -1,0 +1,201 @@
+name: Master Resiliency Self-Hosted Verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Exact 40-character commit SHA to verify"
+        required: true
+        type: string
+      release_mode:
+        description: "Require production release evidence"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: master-resiliency-self-hosted-${{ inputs.release_sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 90
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      RELEASE_MODE: ${{ inputs.release_mode }}
+    steps:
+      - name: Validate requested SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${RELEASE_SHA}" in
+            ????????-????-????-????-????????????) echo "UUIDs are not commit SHAs"; exit 2 ;;
+          esac
+          if ! printf '%s' "${RELEASE_SHA}" | grep -Eq '^[0-9a-fA-F]{40}$'; then
+            echo "release_sha must be an exact 40-character Git commit SHA"
+            exit 2
+          fi
+
+      - name: Clean isolated workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+
+      - name: Download exact commit without marketplace actions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          curl --fail --silent --show-error --location             --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 180             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/tarball/${RELEASE_SHA}"             | tar -xz -C source --strip-components=1
+          test -f source/resilience-policy.json
+
+      - name: Record environment
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          echo "repository=${GITHUB_REPOSITORY}"
+          echo "release_sha=${RELEASE_SHA}"
+          echo "runner=${RUNNER_NAME}"
+          echo "os=${RUNNER_OS}"
+          echo "arch=${RUNNER_ARCH}"
+          command -v git >/dev/null && git --version || true
+          command -v node >/dev/null && node --version || true
+          command -v npm >/dev/null && npm --version || true
+          command -v pnpm >/dev/null && pnpm --version || true
+          command -v go >/dev/null && go version || true
+          command -v cargo >/dev/null && cargo --version || true
+          command -v python3 >/dev/null && python3 --version || true
+          command -v docker >/dev/null && docker --version || true
+
+      - name: Enforce resiliency policy
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          p=json.loads(pathlib.Path("resilience-policy.json").read_text())
+          if p.get("standard") != "elite-master-error-elimination-v1":
+              raise SystemExit("unexpected resiliency standard")
+          inv=p.get("safety_invariants",{})
+          required=("deny_cross_tenant_access","require_idempotency_for_side_effects",
+                    "require_append_only_audit_for_privileged_actions","require_bounded_retries",
+                    "require_dead_letter_handling","require_timeouts_on_external_calls",
+                    "require_health_checks","require_restore_testing")
+          missing=[x for x in required if inv.get(x) is not True]
+          if missing: raise SystemExit("disabled invariants: "+",".join(missing))
+          if os.getenv("RELEASE_MODE","false").lower()=="true":
+              ev=p.get("release_evidence",{})
+              incomplete=[k for k,v in ev.items() if isinstance(v,bool) and not v]
+              if incomplete: raise SystemExit("production evidence incomplete: "+",".join(incomplete))
+          print("resiliency policy accepted")
+          PY
+
+      - name: Install JavaScript dependencies reproducibly
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          if [ -f pnpm-lock.yaml ]; then
+            command -v corepack >/dev/null
+            corepack enable
+            pnpm install --frozen-lockfile --ignore-scripts
+          elif [ -f package-lock.json ]; then
+            npm ci --ignore-scripts --no-audit --no-fund
+          elif [ -f yarn.lock ]; then
+            command -v corepack >/dev/null
+            corepack enable
+            yarn install --immutable --ignore-scripts || yarn install --frozen-lockfile --ignore-scripts
+          elif [ -f package.json ]; then
+            echo "package.json exists without a supported lockfile; release verification refuses non-reproducible install"
+            exit 3
+          else
+            echo "No JavaScript dependency graph"
+          fi
+
+      - name: Run JavaScript verification
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          [ -f package.json ] || exit 0
+          PM=npm
+          [ -f pnpm-lock.yaml ] && PM=pnpm
+          [ -f yarn.lock ] && PM=yarn
+          python3 - <<'PY' > /tmp/elite-scripts.txt
+          import json
+          p=json.load(open("package.json"))
+          scripts=p.get("scripts",{})
+          for n in ("check","test","typecheck","lint","build"):
+              if n in scripts: print(n)
+          PY
+          while IFS= read -r s; do
+            [ -n "$s" ] || continue
+            echo "Running $PM $s"
+            case "$PM" in
+              pnpm) pnpm run "$s" ;;
+              yarn) yarn "$s" ;;
+              *) npm run "$s" ;;
+            esac
+          done < /tmp/elite-scripts.txt
+
+      - name: Run Go verification
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          if [ -f go.mod ]; then
+            command -v go >/dev/null
+            go test ./...
+            go vet ./...
+          fi
+
+      - name: Run Rust verification
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          if [ -f Cargo.toml ]; then
+            command -v cargo >/dev/null
+            cargo test --all-targets
+            cargo check --all-targets
+          fi
+
+      - name: Produce exact-SHA evidence
+        if: always()
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mkdir -p .elite/evidence
+          python3 - <<'PY'
+          import json,os,platform,datetime,pathlib
+          e={
+            "standard":"elite-master-error-elimination-v1",
+            "repository":os.getenv("GITHUB_REPOSITORY"),
+            "release_sha":os.getenv("RELEASE_SHA"),
+            "workflow_run_id":os.getenv("GITHUB_RUN_ID"),
+            "workflow_run_attempt":os.getenv("GITHUB_RUN_ATTEMPT"),
+            "runner_name":os.getenv("RUNNER_NAME"),
+            "runner_os":os.getenv("RUNNER_OS"),
+            "runner_arch":os.getenv("RUNNER_ARCH"),
+            "generated_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "release_mode":os.getenv("RELEASE_MODE","false").lower()=="true"
+          }
+          path=pathlib.Path(".elite/evidence/self-hosted-verification.json")
+          path.write_text(json.dumps(e,indent=2)+"\n")
+          print(path.read_text())
+          PY
+          echo "### Self-hosted exact-SHA verification" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Repository: ${GITHUB_REPOSITORY}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- SHA: ${RELEASE_SHA}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Runner: ${RUNNER_NAME} / ${RUNNER_OS} / ${RUNNER_ARCH}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Run: ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}" >> "${GITHUB_STEP_SUMMARY}"
