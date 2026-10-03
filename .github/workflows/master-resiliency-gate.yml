@@ -1,0 +1,91 @@
+name: Master Resiliency Gate
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_mode:
+        description: "Require completed runtime evidence for production release"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: master-resiliency-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resilience:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Enforce portfolio reliability invariants
+        env:
+          RELEASE_MODE: ${{ inputs.release_mode || 'false' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, re, sys
+          failures=[]; warnings=[]
+          root=pathlib.Path(".")
+          policy_path=root/"resilience-policy.json"
+          if not policy_path.exists():
+              failures.append("missing resilience-policy.json")
+          else:
+              try:
+                  p=json.loads(policy_path.read_text())
+                  required={"input_validation","business_logic","database_integrity","api_resiliency","security","ux_failure_prevention","automation_safety","ai_safety","performance","scalability","observability","maintainability","testing","devops","self_healing","single_point_of_failure"}
+                  missing=required-set(p.get("required_domains",[]))
+                  if missing: failures.append("policy missing domains: "+",".join(sorted(missing)))
+                  inv=p.get("safety_invariants",{})
+                  for key in ("deny_cross_tenant_access","require_idempotency_for_side_effects","require_append_only_audit_for_privileged_actions","require_bounded_retries","require_dead_letter_handling","require_timeouts_on_external_calls","require_restore_testing"):
+                      if inv.get(key) is not True: failures.append("safety invariant not enabled: "+key)
+                  if os.getenv("RELEASE_MODE","false").lower()=="true":
+                      ev=p.get("release_evidence",{})
+                      incomplete=[k for k,v in ev.items() if isinstance(v,bool) and not v]
+                      if incomplete: failures.append("release evidence incomplete: "+",".join(incomplete))
+              except Exception as e:
+                  failures.append("invalid resilience-policy.json: "+str(e))
+
+          forbidden=re.compile(r'(^|/)(\.env$|\.dev\.vars$|credentials\.json$|service-account.*\.json$|id_(rsa|ed25519)$|.*\.(pem|key|p12|pfx|jks|keystore|tfstate|dump|sqlite|db|bak)$)',re.I)
+          tracked=os.popen("git ls-files").read().splitlines()
+          for f in tracked:
+              if forbidden.search(f) and not re.search(r'\.env\.(example|sample)$',f,re.I):
+                  failures.append("forbidden sensitive/data artifact: "+f)
+
+          for wf in (root/".github/workflows").glob("*.y*ml"):
+              t=wf.read_text(errors="ignore")
+              checks=[
+                (r'(?m)^\s*pull_request_target\s*:',"pull_request_target forbidden"),
+                (r'(?m)^\s*permissions\s*:\s*write-all\s*$',"write-all forbidden"),
+                (r'persist-credentials\s*:\s*true',"persisted credentials forbidden"),
+                (r'curl\b[^\n]*\|\s*(?:ba)?sh\b',"pipe-to-shell forbidden")
+              ]
+              for rx,msg in checks:
+                  if re.search(rx,t,re.I): failures.append(f"{wf}: {msg}")
+              for m in re.finditer(r'\buses:\s*([^\s#]+)',t):
+                  ref=m.group(1)
+                  if ref.startswith(("./","docker://")): continue
+                  if "@" not in ref or not re.fullmatch(r'[0-9a-fA-F]{40}',ref.rsplit("@",1)[1]):
+                      failures.append(f"{wf}: external action must be pinned to full SHA: {ref}")
+
+          if not ((root/"RELEASE_READINESS.md").exists() or (root/"production-readiness.json").exists()):
+              warnings.append("no release-readiness artifact found")
+
+          if failures:
+              print("MASTER RESILIENCY GATE FAILED")
+              for x in sorted(set(failures)): print("ERROR:",x)
+              for x in sorted(set(warnings)): print("WARN:",x)
+              sys.exit(1)
+          print("MASTER RESILIENCY GATE PASSED")
+          for x in sorted(set(warnings)): print("WARN:",x)
+          PY
