@@ -17,6 +17,7 @@ import { InMemoryTokenBucketRateLimiter, PostgresTokenBucketRateLimiter, princip
 import { authorize, type Principal } from '../security/rbac.js';
 import type { EstimateLine } from '../domain/types.js';
 import { buildEstimateCompletenessReview } from '../intelligence/estimate-completeness.js';
+import { buildComponentIntelligenceWorkspace } from '../intelligence/component-intelligence.js';
 import type { AddSupplementChangeInput } from '../application/supplement-service.js';
 import { EliteJsonInterchangeAdapter, type EliteEstimateEnvelope } from '../interchange/elite-json.js';
 import { EstimateImportService } from '../interchange/import-service.js';
@@ -509,6 +510,10 @@ const server = createServer(async (req, res) => {
       if (req.method === 'GET' && parts[3] === 'completeness-review' && parts.length === 4) {
         const estimate = await service.get(actor, id);
         return send(res, 200, buildEstimateCompletenessReview(estimate));
+      }
+      if (req.method === 'GET' && parts[3] === 'component-intelligence' && parts.length === 4) {
+        const estimate = await service.get(actor, id);
+        return send(res, 200, buildComponentIntelligenceWorkspace(estimate));
       }
       if (req.method === 'GET' && parts[3] === 'supplement-review-draft' && parts.length === 4) {
         const estimate = await service.get(actor, id);

@@ -124,3 +124,4 @@ export * from './valuation/market-evidence.js';
 export * from './intelligence/intelligence-fabric-client.js';
 export * from './intelligence/labor-intelligence.js';
 export * from './intelligence/estimate-guidance.js';
+export * from './intelligence/component-intelligence.js';

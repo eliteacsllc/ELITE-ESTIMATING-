@@ -1,4 +1,5 @@
 import './elite-brand.css';
+import { mountProfessionalWorkspace } from './professional-workspace';
 
 const apiBase = (import.meta.env.VITE_ESTIMATING_API_ORIGIN || '').replace(/\/$/, '');
 
@@ -142,11 +143,63 @@ assetClass?.addEventListener('change', updateReadiness);
 assetId?.addEventListener('input', updateReadiness);
 updateReadiness();
 
-continueButton?.addEventListener('click', () => {
+function assetIdentityPayload(assetType: string, value: string) {
+  const normalized = value.trim().toUpperCase();
+  if (assetType === 'marine') return normalized ? { hin: normalized } : {};
+  if (['heavy_equipment','agricultural_equipment','material_handling_equipment','industrial_machinery','crane_specialty','atv_utv','other'].includes(assetType)) {
+    return normalized ? { serialNumber: normalized } : {};
+  }
+  if (['residential_property','commercial_property','contents'].includes(assetType)) return normalized ? { assetTag: normalized } : {};
+  return normalized ? { vin: normalized } : {};
+}
+
+continueButton?.addEventListener('click', async () => {
+  const assetType = assetClass?.value || 'passenger_vehicle';
+  const identity = (assetId?.value || '').trim();
+  const config = identityConfig[assetType];
+  if (config.required && !config.validate(identity.toUpperCase())) {
+    updateReadiness();
+    return;
+  }
+
   document.querySelector('.progress-step:nth-child(1)')?.classList.remove('is-active');
   document.querySelector('.progress-step:nth-child(2)')?.classList.add('is-active');
-  document.querySelector<HTMLInputElement>('#photos')?.focus();
-  if (readinessCopy) readinessCopy.textContent = 'Asset setup complete. Add available evidence, then continue into review.';
+  if (continueButton) {
+    continueButton.disabled = true;
+    continueButton.textContent = 'Opening workspace…';
+  }
+  if (readinessCopy) readinessCopy.textContent = 'Creating the governed estimate workspace and loading intelligence services.';
+
+  try {
+    const response = await fetch(apiUrl('/v1/estimates'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': crypto.randomUUID(),
+      },
+      body: JSON.stringify({
+        asset: {
+          assetClass: assetType,
+          ...assetIdentityPayload(assetType, identity),
+        },
+        locale: navigator.language || 'en-US',
+        currency: 'USD',
+        jurisdiction: 'US',
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(String(body.error || `request_failed_${response.status}`));
+    document.querySelector('.progress-step:nth-child(2)')?.classList.remove('is-active');
+    document.querySelector('.progress-step:nth-child(3)')?.classList.add('is-active');
+    await mountProfessionalWorkspace(app, apiBase, String(body.id));
+  } catch (error) {
+    if (continueButton) {
+      continueButton.disabled = false;
+      continueButton.textContent = 'Continue estimate';
+    }
+    if (readinessCopy) readinessCopy.textContent = `Workspace could not be opened: ${error instanceof Error ? error.message : 'request failed'}`;
+  }
 });
 
 document.querySelector<HTMLButtonElement>('#health')?.addEventListener('click', async () => {
