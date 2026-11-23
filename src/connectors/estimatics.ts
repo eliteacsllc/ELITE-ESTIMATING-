@@ -80,7 +80,7 @@ export function estimaticsEnvelopeToProviderRecords(
       provider: 'elite-estimatics',
       sourceId: item.record_id,
       retrievedAt: item.citations.reduce((latest, citation) =>
-        citation.retrieved_at > latest ? citation.retrieved_at : latest, item.citations[0].retrieved_at),
+        citation.retrieved_at > latest ? citation.retrieved_at : latest, item.citations[0]!.retrieved_at),
       licenseClass: item.citations.some((citation) => citation.license_class === 'licensed_exportable') ? 'licensed' : 'public',
       confidence: item.status === 'human_review_required' ? 0.5 : 1,
     },

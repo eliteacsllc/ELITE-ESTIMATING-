@@ -32,10 +32,10 @@ export function calculateDiminishedValue(input:{
   const preLoss=calculateMarketValuation({
     subject:input.subject,
     comparables:input.comparables,
-    selectedComparableIds:input.selectedComparableIds,
-    bookSources:input.bookSources,
-    policy:input.policy,
-    blendBookWeight:input.blendBookWeight,
+    ...(input.selectedComparableIds !== undefined ? {selectedComparableIds:input.selectedComparableIds} : {}),
+    ...(input.bookSources !== undefined ? {bookSources:input.bookSources} : {}),
+    ...(input.policy !== undefined ? {policy:input.policy} : {}),
+    ...(input.blendBookWeight !== undefined ? {blendBookWeight:input.blendBookWeight} : {}),
   });
   const evidencePostLoss=Number(input.postLossMarketEvidence);
   const totalDamageAdjustment=input.damageAdjustments.reduce((sum,a)=>sum+Math.max(0,Number(a.amount)||0),0);

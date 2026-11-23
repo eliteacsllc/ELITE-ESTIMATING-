@@ -32,7 +32,7 @@ export class CanonicalHttpComparableProvider implements ComparableProvider{
       searchedAt:String(payload.searchedAt||new Date().toISOString()),
       radiusMiles:Number(payload.radiusMiles??request.radiusMiles),
       comparables:payload.comparables as never,
-      sourceRequestId:typeof payload.sourceRequestId==='string'?payload.sourceRequestId:undefined,
+      ...(typeof payload.sourceRequestId==='string'?{sourceRequestId:payload.sourceRequestId}:{}),
     };
   }
 }

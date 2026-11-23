@@ -5,14 +5,14 @@ import { handleEstimateWorkflowHttp } from './http.js';
 const actor={userId:'adjuster@example.com',tenantId:'tenant-a',roles:['adjuster']} as never;
 
 test('routes authenticated valuation request before estimate workflow paths',async()=>{
-  let sent:{status:number;body:any}|null=null;
+  const sent:{status?:number;body?:any}={};
   const handled=await handleEstimateWorkflowHttp({
     req:{method:'POST'} as never,
     res:{} as never,
     actor,
     parts:['v1','valuations'],
     service:{} as never,
-    send:(_res,status,body)=>{sent={status,body};},
+    send:(_res,status,body)=>{sent.status=status;sent.body=body;},
     json:async()=>({
       kind:'market_value',
       claimId:'clm_1',

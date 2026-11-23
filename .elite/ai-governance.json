@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0.0",
+  "application": "elite-estimating-os",
+  "owner": "eliteacsllc",
+  "defaultDataClassification": "confidential",
+  "useCases": [
+    {
+      "id": "estimate-drafting-assistance",
+      "purpose": "Draft estimate operations and supporting recommendations for authorized human review.",
+      "riskTier": "high",
+      "dataClassification": "confidential",
+      "modelId": null,
+      "modelVersion": null,
+      "promptVersion": null,
+      "humanApprovalRequired": true,
+      "irreversibleActionAllowed": false,
+      "externalProviderAllowed": false,
+      "restrictedExternalTransferAllowed": false,
+      "provenanceRequired": true,
+      "auditRequired": true,
+      "retentionPolicyId": "estimate-record-policy"
+    },
+    {
+      "id": "acv-dv-analysis-assistance",
+      "purpose": "Assist with ACV and diminished-value evidence synthesis without autonomously issuing a binding valuation.",
+      "riskTier": "high",
+      "dataClassification": "confidential",
+      "modelId": null,
+      "modelVersion": null,
+      "promptVersion": null,
+      "humanApprovalRequired": true,
+      "irreversibleActionAllowed": false,
+      "externalProviderAllowed": false,
+      "restrictedExternalTransferAllowed": false,
+      "provenanceRequired": true,
+      "auditRequired": true,
+      "retentionPolicyId": "valuation-record-policy"
+    }
+  ]
+}

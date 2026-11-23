@@ -20,7 +20,7 @@ test('pins Estimatics evidence to claim inspection and estimate identities',()=>
  });
  assert.equal(receipt.estimateId,'estimate-1');
  assert.equal(receipt.inspectionId,'inspection-1');
- assert.equal(receipt.recordRefs[0].fingerprint,'fp');
+ assert.equal(receipt.recordRefs[0]?.fingerprint,'fp');
  assert.equal(receipt.sourceReceiptDigest,'source-receipt');
 });
 

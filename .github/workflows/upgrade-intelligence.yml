@@ -8,5 +8,5 @@ permissions:
   issues: write
 jobs:
   scan:
-    uses: eliteacsllc/elite-sdk/.github/workflows/reusable-upgrade-intelligence.yml@main
+    uses: eliteacsllc/elite-sdk/.github/workflows/reusable-upgrade-intelligence.yml@2ade05a76b43fba6511ef4fed119fe4a09af9242
     secrets: inherit

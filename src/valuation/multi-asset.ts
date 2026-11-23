@@ -34,12 +34,12 @@ export function normalizeMultiAssetSubject(subject: MultiAssetSubject): SubjectV
   if (!subject?.assetClass) throw new Error('asset_class_required');
   assetSearchPolicy(subject.assetClass);
   return {
-    year: subject.year,
-    make: subject.make ?? subject.manufacturer,
-    model: subject.model ?? subject.series,
-    trim: subject.trim,
-    mileage: subject.assetClass === 'heavy_equipment' ? subject.hours : subject.mileage,
-    options: subject.options,
-    equipment: subject.equipment,
+    ...(subject.year !== undefined ? {year:subject.year} : {}),
+    ...((subject.make ?? subject.manufacturer) !== undefined ? {make:subject.make ?? subject.manufacturer} : {}),
+    ...((subject.model ?? subject.series) !== undefined ? {model:subject.model ?? subject.series} : {}),
+    ...(subject.trim !== undefined ? {trim:subject.trim} : {}),
+    ...((subject.assetClass === 'heavy_equipment' ? subject.hours : subject.mileage) !== undefined ? {mileage:subject.assetClass === 'heavy_equipment' ? subject.hours : subject.mileage} : {}),
+    ...(subject.options !== undefined ? {options:subject.options} : {}),
+    ...(subject.equipment !== undefined ? {equipment:subject.equipment} : {}),
   };
 }
