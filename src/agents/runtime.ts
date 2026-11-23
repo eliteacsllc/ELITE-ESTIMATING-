@@ -183,7 +183,7 @@ export class AgentMeshRuntime {
             ? 'agent_governance_approval_required'
             : governanceDecision.reason,
         };
-        emit({ type: 'failed', agentId: executor.agentId, detail: governedDenied.error });
+        emit({ type: 'failed', agentId: executor.agentId, detail: governedDenied.error ?? 'agent_governance_denied' });
         return governedDenied;
       }
       try {
